@@ -126,6 +126,18 @@ public class MainActivity extends Activity {
         health = new TextView(this);
         col.addView(health);
 
+        section(col, "5. Diagnóstico");
+        button(col, "Copiar lista de sensores do relógio", v -> {
+            String s = Prefs.sensors(this);
+            if (s.isEmpty()) {
+                toast("Ainda não chegou. Ligue o relógio e tente de novo.");
+                return;
+            }
+            android.content.ClipboardManager cm = getSystemService(android.content.ClipboardManager.class);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("sensores", s));
+            toast("Copiado. Cole na conversa com o Claude.");
+        });
+
         ScrollView sv = new ScrollView(this);
         sv.addView(col);
         setContentView(sv);

@@ -250,9 +250,40 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
                 if (l != null) l.syncAll();
                 sendBattery(true);
                 break;
+            case Proto.SENSORS:
+                Prefs.setSensors(this, m.optString("list"));
+                break;
+            case Proto.UPD_REQ:
+                relayWatchUpdate(m.optLong("have", 0));
+                break;
             default:
                 break;
         }
+    }
+
+    // ---------- atualização do relógio através do telemóvel ----------
+
+    private void relayWatchUpdate(long have) {
+        new Thread(() -> {
+            try {
+                io.github.jacobhortencio.watchbridge.common.Http.Release r =
+                        io.github.jacobhortencio.watchbridge.common.Http.latest(null);
+                if (r.version > 0 && r.version <= have) {
+                    sendNow(Msg.of(Proto.UPD_NONE, "msg", "Já tem a versão mais recente (" + have + ")"));
+                    return;
+                }
+                if (r.watchApkUrl == null) {
+                    sendNow(Msg.of(Proto.UPD_NONE, "msg", "APK não encontrado no GitHub"));
+                    return;
+                }
+                byte[] apk = io.github.jacobhortencio.watchbridge.common.Http.get(r.watchApkUrl, null);
+                sendNow(Msg.of(Proto.UPD_APK, "ver", r.version,
+                        "b64", Base64.encodeToString(apk, Base64.NO_WRAP)));
+            } catch (Exception e) {
+                Log.w(TAG, "atualização via telemóvel falhou", e);
+                sendNow(Msg.of(Proto.UPD_NONE, "msg", "O telemóvel não conseguiu descarregar: " + e.getMessage()));
+            }
+        }, "wb-relay-update").start();
     }
 
     // ---------- ícones das apps ----------

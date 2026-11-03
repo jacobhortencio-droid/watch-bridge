@@ -35,4 +35,13 @@ public final class Proto {
     public static final String MEDIA_REQ = "media_req";
     public static final String FIND_PHONE = "find_phone";
     public static final String HEALTH = "health";
+    public static final String SENSORS = "sensors";
+    // atualização do relógio através do telemóvel
+    public static final String UPD_REQ = "upd_req";   // relógio -> telemóvel
+    public static final String UPD_APK = "upd_apk";   // telemóvel -> relógio
+    public static final String UPD_NONE = "upd_none"; // telemóvel -> relógio
+
+    public static final String RELEASE_API =
+            "https://api.github.com/repos/jacobhortencio-droid/watch-bridge/releases/tags/latest";
+    public static final String WATCH_ASSET = "WatchBridge-relogio.apk";
 }

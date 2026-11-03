@@ -364,9 +364,32 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
             case Proto.HELLO:
                 phoneName = m.optString("name");
                 sendSteps(true);
+                sendSensorList();
+                break;
+            case Proto.UPD_APK:
+                Updater.onPhoneApk(this, m);
+                break;
+            case Proto.UPD_NONE:
+                Updater.onPhoneNone(m);
                 break;
             default:
                 break;
+        }
+    }
+
+    /** Lista de sensores do relógio, para descobrir o que mais dá para ler (SpO2, temperatura...). */
+    private void sendSensorList() {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append(android.os.Build.MODEL).append(" · Android ").append(android.os.Build.VERSION.RELEASE)
+                    .append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")\n");
+            for (Sensor s : getSystemService(SensorManager.class).getSensorList(Sensor.TYPE_ALL)) {
+                sb.append(s.getType()).append(" | ").append(s.getStringType()).append(" | ")
+                        .append(s.getName()).append(" | ").append(s.getVendor()).append('\n');
+            }
+            sendToPhone(Msg.of(Proto.SENSORS, "list", sb.toString()));
+        } catch (Exception e) {
+            Log.w(TAG, "lista de sensores falhou", e);
         }
     }
 

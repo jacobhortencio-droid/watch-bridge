@@ -5,108 +5,135 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInstaller;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
 import android.os.Build;
-import android.os.Handler;
-import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import io.github.jacobhortencio.watchbridge.common.Http;
+import io.github.jacobhortencio.watchbridge.common.Msg;
+import io.github.jacobhortencio.watchbridge.common.Proto;
 
 /**
- * O relógio atualiza-se sozinho pelo Wi-Fi a partir da página Releases do GitHub,
- * sem voltar a precisar de ADB.
+ * Atualização do relógio sem ADB:
+ * 1) pede o Wi-Fi ao sistema (no Wear OS pode estar desligado para poupar bateria);
+ * 2) se falhar, pede ao telemóvel que descarregue e envie o APK pela ligação Bluetooth.
  */
 final class Updater {
     private Updater() {}
 
-    private static final String API =
-            "https://api.github.com/repos/jacobhortencio-droid/watch-bridge/releases/tags/latest";
-    private static final String ASSET = "WatchBridge-relogio.apk";
-
     static volatile String state = "";
     private static volatile boolean busy;
-    private static final Handler main = new Handler(Looper.getMainLooper());
+
+    static long localVersion(Context c) {
+        try {
+            return c.getPackageManager().getPackageInfo(c.getPackageName(), 0).getLongVersionCode();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 
     static void run(Context ctx) {
         if (busy) return;
         busy = true;
         final Context app = ctx.getApplicationContext();
-        state = "A procurar atualização...";
+        state = "A ligar o Wi-Fi...";
         new Thread(() -> {
+            String wifiErr;
             try {
-                check(app);
+                if (viaWifi(app)) {
+                    busy = false;
+                    return;
+                }
+                wifiErr = "Wi-Fi indisponível";
             } catch (Exception e) {
-                Log.w("WB-Update", "falhou", e);
-                state = "Sem acesso à internet pelo Wi-Fi";
-            } finally {
+                Log.w("WB-Update", "Wi-Fi falhou", e);
+                wifiErr = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            if (WatchService.connected()) {
+                state = "Sem Wi-Fi (" + wifiErr + "). A descarregar pelo telemóvel...";
+                WatchService.sendToPhone(Msg.of(Proto.UPD_REQ, "have", localVersion(app)));
+                // a resposta chega em onPhoneApk / onPhoneNone
+            } else {
+                state = "Sem Wi-Fi (" + wifiErr + ") e telemóvel desligado";
                 busy = false;
             }
         }, "wb-update").start();
     }
 
-    private static void check(Context ctx) throws Exception {
-        JSONObject rel = new JSONObject(new String(get(API), StandardCharsets.UTF_8));
-        Matcher mt = Pattern.compile("(\\d+)").matcher(rel.optString("name"));
-        long remote = mt.find() ? Long.parseLong(mt.group(1)) : -1;
-        long local = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).getLongVersionCode();
-        if (remote > 0 && remote <= local) {
-            state = "Já tem a versão mais recente (" + local + ")";
-            return;
-        }
-        String url = null;
-        JSONArray assets = rel.optJSONArray("assets");
-        if (assets != null) {
-            for (int i = 0; i < assets.length(); i++) {
-                JSONObject a = assets.optJSONObject(i);
-                if (a != null && ASSET.equals(a.optString("name"))) url = a.optString("browser_download_url");
+    /** true se tratou do assunto (atualizou ou já estava atualizado). */
+    private static boolean viaWifi(Context ctx) throws Exception {
+        ConnectivityManager cm = ctx.getSystemService(ConnectivityManager.class);
+        CountDownLatch got = new CountDownLatch(1);
+        AtomicReference<Network> ref = new AtomicReference<>();
+        ConnectivityManager.NetworkCallback cb = new ConnectivityManager.NetworkCallback() {
+            @Override
+            public void onAvailable(Network network) {
+                ref.set(network);
+                got.countDown();
+            }
+        };
+        NetworkRequest req = new NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build();
+        cm.requestNetwork(req, cb);
+        try {
+            if (!got.await(20, TimeUnit.SECONDS) || ref.get() == null) return false;
+            Network net = ref.get();
+            state = "A procurar atualização...";
+            Http.Release r = Http.latest(net);
+            long local = localVersion(ctx);
+            if (r.version > 0 && r.version <= local) {
+                state = "Já tem a versão mais recente (" + local + ")";
+                return true;
+            }
+            if (r.watchApkUrl == null) throw new Exception("APK não encontrado");
+            state = "A descarregar a versão " + r.version + "...";
+            byte[] apk = Http.get(r.watchApkUrl, net);
+            install(ctx, apk);
+            return true;
+        } finally {
+            try {
+                cm.unregisterNetworkCallback(cb);
+            } catch (Exception ignored) {
             }
         }
-        if (url == null) {
-            state = "Ficheiro não encontrado na página Releases";
-            return;
-        }
-        state = "A descarregar a versão " + remote + "...";
-        byte[] apk = get(url);
-        state = "A instalar...";
-        install(ctx, apk);
     }
 
-    private static byte[] get(String u) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
-        c.setConnectTimeout(15_000);
-        c.setReadTimeout(30_000);
-        c.setInstanceFollowRedirects(true);
-        c.setRequestProperty("User-Agent", "watch-bridge");
-        c.setRequestProperty("Accept", "application/json, application/octet-stream");
-        int code = c.getResponseCode();
-        if (code >= 300 && code < 400) { // redirecionamento entre domínios
-            String loc = c.getHeaderField("Location");
-            c.disconnect();
-            if (loc != null) return get(loc);
+    static void onPhoneApk(Context ctx, JSONObject m) {
+        busy = false;
+        long v = m.optLong("ver", -1);
+        if (v > 0 && v <= localVersion(ctx)) {
+            state = "Já tem a versão mais recente (" + localVersion(ctx) + ")";
+            return;
         }
-        if (code != 200) throw new Exception("HTTP " + code);
-        try (InputStream in = c.getInputStream()) {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[16384];
-            int n;
-            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
-            return bos.toByteArray();
-        } finally {
-            c.disconnect();
+        try {
+            byte[] apk = Base64.decode(m.optString("b64"), Base64.DEFAULT);
+            state = "A instalar a versão " + v + "...";
+            install(ctx, apk);
+        } catch (Exception e) {
+            state = "Falhou: " + e.getMessage();
         }
+    }
+
+    static void onPhoneNone(JSONObject m) {
+        busy = false;
+        state = m.optString("msg", "Sem atualização");
     }
 
     private static void install(Context ctx, byte[] apk) throws Exception {
+        state = "A instalar...";
         PackageInstaller pi = ctx.getPackageManager().getPackageInstaller();
         PackageInstaller.SessionParams p = new PackageInstaller.SessionParams(
                 PackageInstaller.SessionParams.MODE_FULL_INSTALL);

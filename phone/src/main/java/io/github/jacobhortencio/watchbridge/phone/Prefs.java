@@ -80,6 +80,14 @@ final class Prefs {
         return p(c).getInt("steps", -1);
     }
 
+    static void setSensors(Context c, String list) {
+        p(c).edit().putString("sensors", list == null ? "" : list).apply();
+    }
+
+    static String sensors(Context c) {
+        return p(c).getString("sensors", "");
+    }
+
     // ---------- apps ----------
 
     static Set<String> muted(Context c) {
