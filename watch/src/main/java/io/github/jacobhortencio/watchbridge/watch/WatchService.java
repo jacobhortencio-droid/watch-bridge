@@ -240,6 +240,7 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         sendSensorList();
         sendMyBattery();
         flushPendingHealth();
+        Workouts.flush(this);
     }
 
     // ---------- Wi-Fi ----------

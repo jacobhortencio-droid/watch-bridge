@@ -60,6 +60,7 @@ public final class Proto {
     public static final String MEDIA_REQ = "media_req";
     public static final String FIND_PHONE = "find_phone";
     public static final String HEALTH = "health";
+    public static final String WORKOUT = "workout";  // resumo + GPX de um treino
     public static final String SENSORS = "sensors";
     public static final String WATCH_BATTERY = "w_battery";
     public static final String SET_DND = "set_dnd";

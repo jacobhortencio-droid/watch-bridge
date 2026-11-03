@@ -56,6 +56,10 @@
             android:name=".SettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".HealthActivity"
+            android:exported="false" />
+
         <service
             android:name=".BridgeService"
             android:exported="false"

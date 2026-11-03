@@ -433,6 +433,9 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             case Proto.HEALTH:
                 Prefs.saveHealth(this, m.optInt("hr", -1), m.optInt("steps", -1), m.optLong("time", 0));
                 break;
+            case Proto.WORKOUT:
+                HealthData.saveWorkout(this, m);
+                break;
             case Proto.WATCH_BATTERY:
                 onWatchBattery(m.optInt("level", -1), m.optBoolean("charging"));
                 break;

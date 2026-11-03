@@ -168,6 +168,7 @@ public class MainActivity extends Activity {
         section(col, "5. Saúde (do relógio)");
         health = new TextView(this);
         col.addView(health);
+        button(col, "📈 Gráficos, sono, treinos e exportação", v -> startActivity(new Intent(this, HealthActivity.class)));
 
         section(col, "6. Atualizações");
         button(col, "Atualizar a app do telemóvel", v -> PhoneUpdater.update(this));

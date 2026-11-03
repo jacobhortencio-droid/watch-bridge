@@ -68,6 +68,7 @@ public class MainActivity extends Activity {
         Ui.button(this, col, "🌤  Tempo", v -> startActivity(new Intent(this, WeatherActivity.class)));
         Ui.button(this, col, "📞  Chamadas", v -> startActivity(new Intent(this, CallsActivity.class)));
         Ui.button(this, col, "🧭  Navegação", v -> startActivity(new Intent(this, NavActivity.class)));
+        Ui.button(this, col, "🏃  Treino", v -> startActivity(new Intent(this, WorkoutActivity.class)));
         Ui.button(this, col, "❤  Saúde", v -> startActivity(new Intent(this, HealthActivity.class)));
         Ui.button(this, col, "🌬  Respirar", v -> startActivity(new Intent(this, BreatheActivity.class)));
         dnd = Ui.button(this, col, "", v -> WatchService.sendToPhone(Msg.of(Proto.SET_DND, "on", !WatchService.phoneDnd)));
