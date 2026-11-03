@@ -87,7 +87,9 @@ public class HealthActivity extends Activity implements SensorEventListener {
         long now = System.currentTimeMillis();
         if (now - lastSent > 10_000) {
             lastSent = now;
-            WatchService.sendToPhone(Msg.of(Proto.HEALTH, "hr", bpm, "steps", WatchService.todaySteps));
+            WatchService s = WatchService.get();
+            if (s != null) s.reportHealth(bpm);
+            else WatchService.sendToPhone(Msg.of(Proto.HEALTH, "hr", bpm, "steps", WatchService.todaySteps));
         }
     }
 

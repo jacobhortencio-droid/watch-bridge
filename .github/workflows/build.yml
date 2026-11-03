@@ -52,7 +52,19 @@ jobs:
           echo "WB_KEYSTORE_PASS=$(cat ~/.wb-signing/pass)" >> "$GITHUB_ENV"
 
       - name: Compilar
-        run: gradle --no-daemon --stacktrace assembleRelease
+        run: |
+          set -o pipefail
+          gradle --no-daemon assembleRelease 2>&1 | tee build.log
+
+      - name: Publicar erros da compilação
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          { grep -nE "error:|warning: \[|e: |What went wrong|FAILED|Exception" -A4 build.log || tail -n 120 build.log; } | head -c 60000 > errors.txt
+          gh release delete build-log --yes --cleanup-tag || true
+          gh release create build-log --prerelease --title "Erros da compilação ${{ github.run_number }}" \
+            --notes-file errors.txt --target ${{ github.sha }}
 
       - name: Juntar APKs
         run: |

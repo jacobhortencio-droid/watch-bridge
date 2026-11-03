@@ -55,6 +55,29 @@ class Notifier {
         nm.createNotificationChannel(c);
         NotificationChannel f = new NotificationChannel(CH_FIND, "Encontrar relógio", NotificationManager.IMPORTANCE_HIGH);
         nm.createNotificationChannel(f);
+        NotificationChannel al = new NotificationChannel(CH_ALERT, "Avisos (ligação, bateria)", NotificationManager.IMPORTANCE_HIGH);
+        al.enableVibration(true);
+        al.setVibrationPattern(new long[]{0, 400, 200, 400});
+        nm.createNotificationChannel(al);
+    }
+
+    static final String CH_ALERT = "alert";
+    static final int LOST_ID = 3;
+    static final int LOWBAT_ID = 4;
+    static final int UPDATE_ID = 5;
+
+    void alert(int id, String title, String text) {
+        nm.notify(id, new Notification.Builder(ctx, CH_ALERT)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(new Notification.BigTextStyle().bigText(text))
+                .setAutoCancel(true)
+                .build());
+    }
+
+    void cancel(int id) {
+        nm.cancel(id);
     }
 
     static int idFor(String key) {
@@ -95,8 +118,9 @@ class Notifier {
         String title = m.optString("title");
         String text = m.optString("text");
         boolean call = m.optBoolean("call");
+        boolean loud = call || m.optBoolean("alarm");
 
-        Notification.Builder b = new Notification.Builder(ctx, call ? CH_CALLS : CH_NOTIFS)
+        Notification.Builder b = new Notification.Builder(ctx, loud ? CH_CALLS : CH_NOTIFS)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle(title.isEmpty() ? app : title)
                 .setContentText(text)
@@ -104,13 +128,13 @@ class Notifier {
                 .setSubText(app)
                 .setWhen(m.optLong("time", System.currentTimeMillis()))
                 .setShowWhen(true)
-                .setOnlyAlertOnce(!call)
+                .setOnlyAlertOnce(!loud)
                 .setAutoCancel(true)
                 .setCategory(call ? Notification.CATEGORY_CALL : Notification.CATEGORY_MESSAGE)
                 .setDeleteIntent(pi(ActionReceiver.ACTION_DISMISS, key, -1, id, false));
         Bitmap icon = icons.get(m.optString("pkg"));
         if (icon != null) b.setLargeIcon(icon);
-        if (call) b.setOngoing(true);
+        if (loud) b.setOngoing(true);
 
         JSONArray actions = m.optJSONArray("actions");
         if (actions != null) {

@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
         button(col, "Bateria sem restrições", v -> askBattery());
         button(col, "Arranque automático (HyperOS)", v -> openAutostart());
+        button(col, "Escolher apps que vão ao relógio", v -> startActivity(new Intent(this, AppsActivity.class)));
 
         section(col, "2. Ligação por Wi-Fi (alternativa)");
         TextView ipHelp = new TextView(this);
@@ -158,15 +159,53 @@ public class MainActivity extends Activity {
             checks.setText(mark(hasRuntimePermissions(MainActivity.this)) + " Permissões Bluetooth\n"
                     + mark(hasNotificationAccess(MainActivity.this)) + " Acesso às notificações\n"
                     + mark(bat) + " Bateria sem restrições");
-            int hr = Prefs.lastHr(MainActivity.this);
-            int steps = Prefs.lastSteps(MainActivity.this);
-            String hrTxt = hr > 0
-                    ? hr + " bpm (" + DateUtils.getRelativeTimeSpanString(Prefs.lastHrTime(MainActivity.this)) + ")"
-                    : "sem dados";
-            health.setText("Frequência cardíaca: " + hrTxt + "\nPassos hoje: " + (steps >= 0 ? steps : "sem dados"));
+            health.setText(healthSummary());
             h.postDelayed(this, 1000);
         }
     };
+
+    private String healthSummary() {
+        int hr = Prefs.lastHr(this);
+        int steps = Prefs.lastSteps(this);
+        StringBuilder sb = new StringBuilder();
+        sb.append("Frequência cardíaca: ");
+        if (hr > 0) {
+            sb.append(hr).append(" bpm (")
+                    .append(DateUtils.getRelativeTimeSpanString(Prefs.lastHrTime(this))).append(")");
+        } else {
+            sb.append("sem dados");
+        }
+        sb.append("\nPassos hoje: ").append(steps >= 0 ? String.valueOf(steps) : "sem dados");
+
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        long midnight = cal.getTimeInMillis();
+        int n = 0, min = Integer.MAX_VALUE, max = 0;
+        long sum = 0;
+        java.util.List<long[]> all = Prefs.hrHistory(this);
+        java.util.List<long[]> today = new java.util.ArrayList<>();
+        for (long[] r : all) {
+            if (r[0] < midnight) continue;
+            today.add(r);
+            n++;
+            sum += r[1];
+            min = Math.min(min, (int) r[1]);
+            max = Math.max(max, (int) r[1]);
+        }
+        if (n > 0) {
+            sb.append("\n\nHoje: ").append(n).append(" medições · média ").append(sum / n)
+                    .append(" · mín ").append(min).append(" · máx ").append(max).append(" bpm");
+            java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault());
+            sb.append("\nÚltimas:");
+            for (int i = Math.max(0, today.size() - 8); i < today.size(); i++) {
+                long[] r = today.get(i);
+                sb.append("\n  ").append(f.format(new java.util.Date(r[0]))).append("  ").append(r[1]).append(" bpm");
+            }
+        }
+        return sb.toString();
+    }
 
     private static String mark(boolean ok) {
         return ok ? "✅" : "❌";

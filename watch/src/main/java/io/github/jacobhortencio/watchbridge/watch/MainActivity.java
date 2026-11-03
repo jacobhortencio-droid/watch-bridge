@@ -31,7 +31,7 @@ public class MainActivity extends Activity {
     };
 
     private final Handler h = new Handler(Looper.getMainLooper());
-    private TextView status, battery, ip;
+    private TextView status, battery, ip, update;
     private Button find;
     private boolean finding;
 
@@ -60,6 +60,15 @@ public class MainActivity extends Activity {
         });
         Ui.button(this, col, "❤  Saúde", v -> startActivity(new Intent(this, HealthActivity.class)));
         Ui.button(this, col, "Permissões", v -> requestPermissions(PERMS, 1));
+        Ui.button(this, col, "Saúde em segundo plano", v -> {
+            if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.BODY_SENSORS}, 2);
+            } else {
+                requestPermissions(new String[]{Manifest.permission.BODY_SENSORS_BACKGROUND}, 3);
+            }
+        });
+        Ui.button(this, col, "⬇  Atualizar app", v -> Updater.run(this));
+        update = Ui.text(this, col, "", 11, false);
         Ui.button(this, col, "Reiniciar ligação", v -> {
             stopService(new Intent(this, WatchService.class));
             h.postDelayed(() -> WatchService.start(this), 600);
@@ -87,6 +96,8 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int code, String[] p, int[] r) {
         super.onRequestPermissionsResult(code, p, r);
         if (hasBlePermissions(this)) WatchService.start(this);
+        WatchService s = WatchService.get();
+        if (s != null) s.upgradeForeground();
     }
 
     private final Runnable refresh = new Runnable() {
@@ -101,6 +112,7 @@ public class MainActivity extends Activity {
                     ? "Telemóvel: " + bat + "%" + (WatchService.phoneCharging ? " ⚡" : "") : "");
             String addr = wifiIp();
             ip.setText(addr == null ? "Wi-Fi desligado" : "IP para o telemóvel:\n" + addr);
+            update.setText(Updater.state);
             h.postDelayed(this, 1000);
         }
     };

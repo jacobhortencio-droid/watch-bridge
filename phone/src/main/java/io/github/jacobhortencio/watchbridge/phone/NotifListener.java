@@ -101,7 +101,12 @@ public class NotifListener extends NotificationListenerService {
         Bundle ex = n.extras;
         if (ex != null && ex.containsKey(Notification.EXTRA_MEDIA_SESSION)) return; // música vai à parte
         boolean call = Notification.CATEGORY_CALL.equals(n.category);
-        if (sbn.isOngoing() && !call) return;
+        boolean alarm = Notification.CATEGORY_ALARM.equals(n.category)
+                || Notification.CATEGORY_REMINDER.equals(n.category)
+                || Notification.CATEGORY_EVENT.equals(n.category);
+        if (sbn.isOngoing() && !call && !alarm) return;
+        Prefs.addSeenApp(this, pkg);
+        if (Prefs.muted(this).contains(pkg)) return;
 
         String title = str(ex, Notification.EXTRA_TITLE);
         String text = messagingText(ex);
@@ -137,6 +142,7 @@ public class NotifListener extends NotificationListenerService {
                 "text", text.length() > 3000 ? text.substring(0, 3000) : text,
                 "time", sbn.getPostTime(),
                 "call", call,
+                "alarm", alarm && sbn.isOngoing(),
                 "actions", actions));
     }
 

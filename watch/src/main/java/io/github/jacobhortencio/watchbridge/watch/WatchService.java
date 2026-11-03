@@ -48,6 +48,7 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
     private volatile ServerSocket server;
     private volatile boolean destroyed;
     private long lastStepsSent;
+    private boolean lowWarned;
 
     static void start(Context c) {
         try {
@@ -103,7 +104,9 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         startTcpServer();
         registerSteps();
         updateStatus();
+        upgradeForeground();
         h.postDelayed(tick, 30_000);
+        h.postDelayed(hrTick, 60_000);
     }
 
     @Override
@@ -144,11 +147,122 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         }
     };
 
+    private boolean wasConnected;
+
+    /** Avisa (com vibração) se a ligação cair durante mais de 30 segundos. */
+    private final Runnable lostAlert = () -> {
+        if (!connected()) {
+            notifier.alert(Notifier.LOST_ID, "Telemóvel desligado",
+                    "Perdeu-se a ligação ao telemóvel. Volta sozinha quando estiver perto.");
+        }
+    };
+
     private void updateStatus() {
+        boolean now = bleUp || tcp != null;
         if (bleUp) status = "Ligado por Bluetooth";
         else if (tcp != null) status = "Ligado por Wi-Fi";
         else status = "À espera do telemóvel";
         notifier.updateOngoing(status);
+        if (wasConnected && !now) h.postDelayed(lostAlert, 30_000);
+        if (now) {
+            h.removeCallbacks(lostAlert);
+            notifier.cancel(Notifier.LOST_ID);
+            if (!wasConnected) flushPendingHealth();
+        }
+        wasConnected = now;
+    }
+
+    // ---------- frequência cardíaca em segundo plano ----------
+
+    private static final long HR_INTERVAL = 15 * 60_000;
+    private final org.json.JSONArray pendingHealth = new org.json.JSONArray();
+    private boolean measuring;
+    private long measureStart;
+
+    private final Runnable hrTick = new Runnable() {
+        @Override
+        public void run() {
+            startHr();
+            h.postDelayed(this, HR_INTERVAL);
+        }
+    };
+
+    private final Runnable hrStop = this::stopHr;
+
+    boolean canMeasure() {
+        return checkSelfPermission(android.Manifest.permission.BODY_SENSORS)
+                == android.content.pm.PackageManager.PERMISSION_GRANTED;
+    }
+
+    void startHr() {
+        if (measuring || !canMeasure()) return;
+        SensorManager sm = getSystemService(SensorManager.class);
+        Sensor s = sm.getDefaultSensor(Sensor.TYPE_HEART_RATE);
+        if (s == null) return;
+        try {
+            measuring = sm.registerListener(this, s, SensorManager.SENSOR_DELAY_NORMAL);
+        } catch (Exception e) {
+            measuring = false;
+        }
+        if (measuring) {
+            measureStart = System.currentTimeMillis();
+            h.postDelayed(hrStop, 45_000);
+        }
+    }
+
+    private void stopHr() {
+        h.removeCallbacks(hrStop);
+        if (measuring) {
+            SensorManager sm = getSystemService(SensorManager.class);
+            Sensor s = sm.getDefaultSensor(Sensor.TYPE_HEART_RATE);
+            if (s != null) sm.unregisterListener(this, s);
+        }
+        measuring = false;
+    }
+
+    private void onHeartRate(SensorEvent e) {
+        if (!measuring) return;
+        int bpm = Math.round(e.values[0]);
+        if (bpm <= 30 || bpm > 230) return;
+        if (e.accuracy == SensorManager.SENSOR_STATUS_NO_CONTACT
+                || e.accuracy == SensorManager.SENSOR_STATUS_UNRELIABLE) return;
+        if (System.currentTimeMillis() - measureStart < 8_000) return; // deixa o sensor estabilizar
+        stopHr();
+        reportHealth(bpm);
+    }
+
+    /** Envia ao telemóvel, ou guarda para enviar quando voltar a ligação. */
+    void reportHealth(int bpm) {
+        JSONObject m = Msg.of(Proto.HEALTH, "hr", bpm, "steps", todaySteps, "time", System.currentTimeMillis());
+        if (connected()) {
+            sendToPhone(m);
+        } else {
+            synchronized (pendingHealth) {
+                if (pendingHealth.length() >= 200) pendingHealth.remove(0);
+                pendingHealth.put(m);
+            }
+        }
+    }
+
+    private void flushPendingHealth() {
+        synchronized (pendingHealth) {
+            for (int i = 0; i < pendingHealth.length(); i++) {
+                JSONObject m = pendingHealth.optJSONObject(i);
+                if (m != null) sendToPhone(m);
+            }
+            while (pendingHealth.length() > 0) pendingHealth.remove(0);
+        }
+    }
+
+    /** Com a permissão de sensores, pede ao sistema o tipo "saúde" para medir com o ecrã apagado. */
+    void upgradeForeground() {
+        if (android.os.Build.VERSION.SDK_INT < 34 || !canMeasure()) return;
+        try {
+            startForeground(Notifier.ONGOING_ID, notifier.ongoing(status),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE | ServiceInfo.FOREGROUND_SERVICE_TYPE_HEALTH);
+        } catch (Exception e) {
+            Log.w(TAG, "tipo saúde indisponível", e);
+        }
     }
 
     // ---------- Wi-Fi ----------
@@ -235,6 +349,14 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
             case Proto.BATTERY:
                 phoneBattery = m.optInt("level", -1);
                 phoneCharging = m.optBoolean("charging");
+                if (phoneBattery >= 0 && phoneBattery <= 15 && !phoneCharging && !lowWarned) {
+                    lowWarned = true;
+                    notifier.alert(Notifier.LOWBAT_ID, "Bateria do telemóvel fraca",
+                            "O telemóvel está com " + phoneBattery + "%.");
+                } else if (phoneCharging || phoneBattery > 20) {
+                    lowWarned = false;
+                    notifier.cancel(Notifier.LOWBAT_ID);
+                }
                 break;
             case Proto.RING:
                 notifier.ring(m.optBoolean("on", true));
@@ -262,6 +384,10 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
 
     @Override
     public void onSensorChanged(SensorEvent e) {
+        if (e.sensor.getType() == Sensor.TYPE_HEART_RATE) {
+            onHeartRate(e);
+            return;
+        }
         if (e.sensor.getType() != Sensor.TYPE_STEP_COUNTER) return;
         long total = (long) e.values[0];
         SharedPreferences p = getSharedPreferences("steps", MODE_PRIVATE);

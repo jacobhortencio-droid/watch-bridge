@@ -244,7 +244,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
                 PhoneActions.ringPhone(this, m.optBoolean("on", true));
                 break;
             case Proto.HEALTH:
-                Prefs.saveHealth(this, m.optInt("hr", -1), m.optInt("steps", -1));
+                Prefs.saveHealth(this, m.optInt("hr", -1), m.optInt("steps", -1), m.optLong("time", 0));
                 break;
             case Proto.HELLO:
                 if (l != null) l.syncAll();
