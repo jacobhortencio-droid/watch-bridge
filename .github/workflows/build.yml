@@ -1,0 +1,79 @@
+name: Compilar APKs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # Chave de assinatura: nunca vai para o repositório.
+      # Se existir o segredo WB_KEYSTORE_B64 usa-o; senão gera uma e guarda-a em cache
+      # para que as atualizações instalem por cima da versão anterior.
+      - name: Restaurar chave de assinatura
+        uses: actions/cache@v4
+        with:
+          path: ~/.wb-signing
+          key: wb-signing-v1
+
+      - name: Preparar chave de assinatura
+        env:
+          KS_B64: ${{ secrets.WB_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.WB_KEYSTORE_PASS }}
+        run: |
+          mkdir -p ~/.wb-signing
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ~/.wb-signing/key.jks
+            printf '%s' "$KS_PASS" > ~/.wb-signing/pass
+          elif [ ! -f ~/.wb-signing/key.jks ]; then
+            openssl rand -hex 16 > ~/.wb-signing/pass
+            keytool -genkeypair -keystore ~/.wb-signing/key.jks -alias watchbridge \
+              -storepass "$(cat ~/.wb-signing/pass)" -keypass "$(cat ~/.wb-signing/pass)" \
+              -keyalg RSA -keysize 2048 -validity 20000 -dname "CN=Watch Bridge"
+          fi
+          echo "WB_KEYSTORE=$HOME/.wb-signing/key.jks" >> "$GITHUB_ENV"
+          echo "::add-mask::$(cat ~/.wb-signing/pass)"
+          echo "WB_KEYSTORE_PASS=$(cat ~/.wb-signing/pass)" >> "$GITHUB_ENV"
+
+      - name: Compilar
+        run: gradle --no-daemon --stacktrace assembleRelease
+
+      - name: Juntar APKs
+        run: |
+          mkdir -p out
+          cp phone/build/outputs/apk/release/phone-release.apk out/WatchBridge-telemovel.apk
+          cp watch/build/outputs/apk/release/watch-release.apk out/WatchBridge-relogio.apk
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: out/*.apk
+
+      - name: Publicar na página Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest out/*.apk \
+            --title "Watch Bridge (versão ${{ github.run_number }})" \
+            --notes "WatchBridge-telemovel.apk instala no Redmi. WatchBridge-relogio.apk instala no Xiaomi Watch 2 por ADB (Bugjaeger)." \
+            --target ${{ github.sha }}

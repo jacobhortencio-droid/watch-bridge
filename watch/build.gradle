@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.github.jacobhortencio.watchbridge.watch'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'io.github.jacobhortencio.watchbridge.watch'
+        minSdk 33
+        targetSdk 34
+        versionCode rootProject.ext.wbVersionCode
+        versionName rootProject.ext.wbVersionName
+    }
+
+    signingConfigs {
+        shared {
+            def ks = System.getenv('WB_KEYSTORE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('WB_KEYSTORE_PASS')
+                keyAlias 'watchbridge'
+                keyPassword System.getenv('WB_KEYSTORE_PASS')
+            } else {
+                initWith signingConfigs.debug
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.shared
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation project(':common')
+}

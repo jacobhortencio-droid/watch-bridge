@@ -1,0 +1,38 @@
+package io.github.jacobhortencio.watchbridge.common;
+
+import java.util.UUID;
+
+/** Protocolo partilhado entre o telemóvel e o relógio. */
+public final class Proto {
+    private Proto() {}
+
+    // Serviço BLE próprio: não depende do GMS nem do Mi Fitness.
+    public static final UUID SERVICE = UUID.fromString("7d2a0001-6b1e-4c33-9a3f-2b6c1e5f0a01");
+    /** Telemóvel escreve aqui (telemóvel -> relógio). */
+    public static final UUID RX = UUID.fromString("7d2a0002-6b1e-4c33-9a3f-2b6c1e5f0a01");
+    /** Relógio notifica por aqui (relógio -> telemóvel). */
+    public static final UUID TX = UUID.fromString("7d2a0003-6b1e-4c33-9a3f-2b6c1e5f0a01");
+    public static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
+
+    /** Porta TCP da ligação alternativa por Wi-Fi. */
+    public static final int TCP_PORT = 48211;
+
+    // Tipos de mensagem (campo "t")
+    public static final String HELLO = "hello";
+    public static final String PING = "ping";
+    // telemóvel -> relógio
+    public static final String NOTIF = "notif";
+    public static final String NOTIF_RM = "notif_rm";
+    public static final String ICON = "icon";
+    public static final String MEDIA = "media";
+    public static final String BATTERY = "battery";
+    public static final String RING = "ring";
+    // relógio -> telemóvel
+    public static final String DISMISS = "dismiss";
+    public static final String ACTION = "action";
+    public static final String REPLY = "reply";
+    public static final String MEDIA_CMD = "media_cmd";
+    public static final String MEDIA_REQ = "media_req";
+    public static final String FIND_PHONE = "find_phone";
+    public static final String HEALTH = "health";
+}

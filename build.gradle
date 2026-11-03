@@ -1,0 +1,9 @@
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+    id 'com.android.library' version '8.5.2' apply false
+}
+
+ext {
+    wbVersionCode = (System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger()
+    wbVersionName = '0.1.' + wbVersionCode
+}
