@@ -55,6 +55,17 @@ final class PhoneActions {
         }, 500);
     }
 
+    /** Ativa ou desativa o Não incomodar (precisa de acesso à política de notificações). */
+    static void setDnd(Context c, boolean on) {
+        android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+        if (!nm.isNotificationPolicyAccessGranted()) {
+            io.github.jacobhortencio.watchbridge.common.WLog.w("WB", "sem acesso ao Não incomodar");
+            return;
+        }
+        nm.setInterruptionFilter(on ? android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                : android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+    }
+
     /** Faz o telemóvel tocar no volume máximo, mesmo em silêncio. */
     static synchronized void ringPhone(Context c, boolean on) {
         AudioManager am = c.getSystemService(AudioManager.class);

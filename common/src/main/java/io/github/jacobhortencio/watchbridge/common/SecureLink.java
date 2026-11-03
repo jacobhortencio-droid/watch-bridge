@@ -38,15 +38,27 @@ public class SecureLink {
     }
 
     public JSONObject sessionMsg(String role) {
-        return Msg.of(Proto.SESSION, "sid", mySid, "kid", Secure.keyId(store.key()),
-                "role", role, "proto", Proto.VERSION);
+        return sessionMsg(role, false);
     }
 
+    /** @param ack true quando é a resposta a um SESSION do outro lado (evita pingue-pongue). */
+    public JSONObject sessionMsg(String role, boolean ack) {
+        return Msg.of(Proto.SESSION, "sid", mySid, "kid", Secure.keyId(store.key()),
+                "role", role, "proto", Proto.VERSION, "ack", ack);
+    }
+
+    /**
+     * O contador de envio só recomeça quando o outro lado tem uma sessão nova; o de receção
+     * só recomeça com a nossa própria sessão nova (reset). Assim, repetir um SESSION antigo
+     * não permite repetir mensagens antigas.
+     */
     public synchronized void onPeerSession(JSONObject m) {
-        peerSid = m.optString("sid", null);
+        String sid = m.optString("sid", null);
+        if (sid != null && !sid.equals(peerSid)) {
+            peerSid = sid;
+            sendSeq = 0;
+        }
         peerKeyId = m.optString("kid", "");
-        sendSeq = 0;
-        recvSeq = -1;
     }
 
     public boolean paired() {

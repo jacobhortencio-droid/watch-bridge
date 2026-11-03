@@ -16,8 +16,11 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.json.JSONObject;
+
 import java.net.Inet4Address;
 
+import io.github.jacobhortencio.watchbridge.common.Installer;
 import io.github.jacobhortencio.watchbridge.common.Msg;
 import io.github.jacobhortencio.watchbridge.common.Proto;
 
@@ -31,8 +34,8 @@ public class MainActivity extends Activity {
     };
 
     private final Handler h = new Handler(Looper.getMainLooper());
-    private TextView status, battery, ip, update;
-    private Button find;
+    private TextView status, battery, weather, ip, update;
+    private Button find, pair, dnd;
     private boolean finding;
 
     static boolean hasBlePermissions(Context c) {
@@ -47,7 +50,10 @@ public class MainActivity extends Activity {
         Ui.text(this, col, "Watch Bridge", 16, true);
         status = Ui.text(this, col, "", 13, false);
         battery = Ui.text(this, col, "", 13, false);
+        weather = Ui.text(this, col, "", 13, false);
+        weather.setOnClickListener(v -> startActivity(new Intent(this, WeatherActivity.class)));
 
+        pair = Ui.button(this, col, "🔒  Emparelhar", v -> startActivity(new Intent(this, PairActivity.class)));
         Ui.button(this, col, "🎵  Música", v -> startActivity(new Intent(this, MusicActivity.class)));
         find = Ui.button(this, col, "📱  Encontrar telemóvel", v -> {
             finding = !finding;
@@ -58,7 +64,10 @@ public class MainActivity extends Activity {
                 find.setText("📱  Encontrar telemóvel");
             }, 30_000);
         });
+        Ui.button(this, col, "🔔  Histórico", v -> startActivity(new Intent(this, HistoryActivity.class)));
+        Ui.button(this, col, "🌤  Tempo", v -> startActivity(new Intent(this, WeatherActivity.class)));
         Ui.button(this, col, "❤  Saúde", v -> startActivity(new Intent(this, HealthActivity.class)));
+        dnd = Ui.button(this, col, "", v -> WatchService.sendToPhone(Msg.of(Proto.SET_DND, "on", !WatchService.phoneDnd)));
         Ui.button(this, col, "Permissões", v -> requestPermissions(PERMS, 1));
         Ui.button(this, col, "Saúde em segundo plano", v -> {
             if (checkSelfPermission(Manifest.permission.BODY_SENSORS) != PackageManager.PERMISSION_GRANTED) {
@@ -74,6 +83,7 @@ public class MainActivity extends Activity {
             h.postDelayed(() -> WatchService.start(this), 600);
         });
         ip = Ui.text(this, col, "", 11, false);
+        Ui.text(this, col, "Versão " + Updater.localVersion(this), 10, false);
         Ui.show(this, col);
 
         if (!hasBlePermissions(this)) requestPermissions(PERMS, 1);
@@ -105,14 +115,21 @@ public class MainActivity extends Activity {
         public void run() {
             String st = hasBlePermissions(MainActivity.this) ? WatchService.status : "Faltam permissões";
             WatchService s = WatchService.get();
-            if (s != null && !WatchService.connected() && !s.bleError().isEmpty()) st += "\n" + s.bleError();
+            if (s != null && !WatchService.linkedPhysically() && !s.bleError().isEmpty()) st += "\n" + s.bleError();
             status.setText(st);
             int bat = WatchService.phoneBattery;
             battery.setText(WatchService.connected() && bat >= 0
-                    ? "Telemóvel: " + bat + "%" + (WatchService.phoneCharging ? " ⚡" : "") : "");
+                    ? "📱 " + bat + "%" + (WatchService.phoneCharging ? " ⚡" : "") : "");
+            JSONObject w = WPrefs.weather(MainActivity.this);
+            weather.setText(w == null ? "" : WeatherActivity.icon(w.optInt("code"), w.optBoolean("day", true))
+                    + " " + w.optInt("temp") + "° " + w.optString("city"));
+            pair.setText(WatchService.paired(MainActivity.this) ? "🔒  Emparelhado" : "🔓  Emparelhar");
+            dnd.setText(WatchService.phoneDnd ? "🔕  Não incomodar: ligado" : "🔔  Não incomodar: desligado");
             String addr = wifiIp();
             ip.setText(addr == null ? "Wi-Fi desligado" : "IP para o telemóvel:\n" + addr);
-            update.setText(Updater.state);
+            String up = Updater.state;
+            if (!Installer.state.isEmpty()) up = (up.isEmpty() ? "" : up + "\n") + Installer.state;
+            update.setText(up);
             h.postDelayed(this, 1000);
         }
     };

@@ -114,6 +114,23 @@ public class NotifListener extends NotificationListenerService {
         if (text.isEmpty()) text = str(ex, Notification.EXTRA_TEXT);
         if (title.isEmpty() && text.isEmpty()) return;
 
+        // filtros por palavra e contactos importantes
+        String lower = (title + " " + text).toLowerCase(java.util.Locale.ROOT);
+        for (String w : Prefs.list(this, "mute_words", "")) {
+            if (lower.contains(w.toLowerCase(java.util.Locale.ROOT))) return;
+        }
+        boolean vip = false;
+        String lowerTitle = title.toLowerCase(java.util.Locale.ROOT);
+        for (String name : Prefs.list(this, "vip", "")) {
+            if (lowerTitle.contains(name.toLowerCase(java.util.Locale.ROOT))) vip = true;
+        }
+        for (String w : Prefs.list(this, "important_words", "")) {
+            if (lower.contains(w.toLowerCase(java.util.Locale.ROOT))) vip = true;
+        }
+        String otp = findCode(title + " " + text);
+        int vib = vip ? 3 : Prefs.vibFor(this, pkg);
+        boolean silent = !call && !alarm && !vip && Prefs.bool(this, "silence_active", true) && phoneInUse();
+
         JSONArray actions = new JSONArray();
         if (n.actions != null) {
             for (int i = 0; i < n.actions.length && actions.length() < 3; i++) {
@@ -134,7 +151,7 @@ public class NotifListener extends NotificationListenerService {
 
         BridgeService b = BridgeService.get();
         if (b != null) b.sendIconIfNeeded(pkg);
-        BridgeService.send(Msg.of(Proto.NOTIF,
+        JSONObject msg = Msg.of(Proto.NOTIF,
                 "key", sbn.getKey(),
                 "pkg", pkg,
                 "app", appLabel(pkg),
@@ -143,7 +160,60 @@ public class NotifListener extends NotificationListenerService {
                 "time", sbn.getPostTime(),
                 "call", call,
                 "alarm", alarm && sbn.isOngoing(),
-                "actions", actions));
+                "vip", vip,
+                "vib", vib,
+                "silent", silent,
+                "otp", otp,
+                "actions", actions);
+        if (Prefs.bool(this, "send_images", true)) {
+            try {
+                if (ex != null) {
+                    android.graphics.Bitmap pic = ex.getParcelable(Notification.EXTRA_PICTURE, android.graphics.Bitmap.class);
+                    if (pic != null) msg.put("img", jpeg(pic, 320, 70));
+                }
+                android.graphics.drawable.Icon li = n.getLargeIcon();
+                if (li != null) {
+                    android.graphics.drawable.Drawable d = li.loadDrawable(this);
+                    if (d != null) msg.put("avatar", jpeg(toBitmap(d, 96), 96, 80));
+                }
+            } catch (Exception e) {
+                io.github.jacobhortencio.watchbridge.common.WLog.w("WB-Notif", "imagem falhou", e);
+            }
+        }
+        BridgeService.send(msg);
+    }
+
+    /** Códigos de verificação (4 a 8 dígitos) em mensagens que falam de código/OTP/PIN. */
+    static String findCode(String s) {
+        if (!java.util.regex.Pattern.compile("(?i)(c[oó]digo|code|otp|verifica|senha|pin|token|验证码)")
+                .matcher(s).find()) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?<![\\d-])(\\d{4,8})(?![\\d-])").matcher(s);
+        return m.find() ? m.group(1) : "";
+    }
+
+    private boolean phoneInUse() {
+        android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+        android.app.KeyguardManager km = getSystemService(android.app.KeyguardManager.class);
+        return pm.isInteractive() && !km.isKeyguardLocked();
+    }
+
+    private static android.graphics.Bitmap toBitmap(android.graphics.drawable.Drawable d, int size) {
+        android.graphics.Bitmap b = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        d.setBounds(0, 0, size, size);
+        d.draw(c);
+        return b;
+    }
+
+    private static String jpeg(android.graphics.Bitmap src, int maxSide, int quality) {
+        int w = src.getWidth(), h = src.getHeight();
+        float s = Math.min(1f, maxSide / (float) Math.max(w, h));
+        android.graphics.Bitmap b = s < 1f
+                ? android.graphics.Bitmap.createScaledBitmap(src, Math.max(1, Math.round(w * s)), Math.max(1, Math.round(h * s)), true)
+                : src;
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        b.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, bos);
+        return android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP);
     }
 
     private static String str(Bundle ex, String k) {

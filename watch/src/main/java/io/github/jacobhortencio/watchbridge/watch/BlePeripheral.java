@@ -117,7 +117,7 @@ class BlePeripheral {
             return;
         }
         AdvertiseSettings s = new AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
                 .setConnectable(true)
                 .setTimeout(0)
@@ -170,12 +170,18 @@ class BlePeripheral {
         public void onConnectionStateChange(BluetoothDevice d, int status, int newState) {
             h.post(() -> {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    if (device != null && !device.equals(d)) return; // já há um telemóvel
+                    if (device != null && !device.equals(d)) { // já há um telemóvel
+                        try {
+                            if (server != null) server.cancelConnection(d);
+                        } catch (Exception ignored) {
+                        }
+                        return;
+                    }
                     device = d;
                     notifyOn = false;
                     mtu = 23;
                     asm.reset();
-                    stopAdvertising();
+                    // continua a anunciar (pouco consumo) para o modo acessório do telemóvel o encontrar
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED && d.equals(device)) {
                     boolean was = notifyOn;
                     device = null;

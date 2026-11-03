@@ -30,6 +30,7 @@ import java.util.Collections;
 import io.github.jacobhortencio.watchbridge.common.Chunker;
 import io.github.jacobhortencio.watchbridge.common.Msg;
 import io.github.jacobhortencio.watchbridge.common.Proto;
+import io.github.jacobhortencio.watchbridge.common.WLog;
 
 /** Lado do telemóvel: procura o relógio por BLE e liga-se ao serviço próprio. */
 @SuppressLint("MissingPermission")
@@ -54,6 +55,13 @@ class BleCentral {
     private boolean running, scanning, ready, writing;
     private int mtu = 23;
     private int writeRetries;
+    private int attempt;
+
+    /** Aparelho atualmente ligado (para o modo acessório). */
+    BluetoothDevice device() {
+        BluetoothGatt g = gatt;
+        return g == null ? null : g.getDevice();
+    }
 
     BleCentral(Context ctx, Listener listener) {
         this.ctx = ctx.getApplicationContext();
@@ -88,6 +96,20 @@ class BleCentral {
         if (a == null || !a.isEnabled()) {
             h.postDelayed(this::scan, 10_000);
             return;
+        }
+        // Religação direta ao relógio conhecido (modo acessório), alternando com a procura.
+        String bonded = Prefs.bondedAddr(ctx);
+        if (!bonded.isEmpty() && (attempt++ % 2 == 0)) {
+            try {
+                BluetoothDevice d = a.getRemoteDevice(bonded);
+                if (d.getBondState() == BluetoothDevice.BOND_BONDED) {
+                    WLog.i(TAG, "religação direta a " + bonded);
+                    connect(d);
+                    return;
+                }
+            } catch (Exception e) {
+                WLog.w(TAG, "religação direta falhou", e);
+            }
         }
         scanner = a.getBluetoothLeScanner();
         if (scanner == null) {
@@ -143,7 +165,7 @@ class BleCentral {
     };
 
     private void connect(BluetoothDevice d) {
-        Log.i(TAG, "a ligar a " + d.getAddress());
+        WLog.i(TAG, "a ligar a " + d.getAddress());
         BridgeService.setStatus("Relógio encontrado, a ligar...");
         gatt = d.connectGatt(ctx, false, gattCb, BluetoothDevice.TRANSPORT_LE);
         h.postDelayed(connectTimeout, 20_000);
@@ -151,7 +173,7 @@ class BleCentral {
 
     private final Runnable connectTimeout = () -> {
         if (!ready) {
-            Log.w(TAG, "tempo de ligação esgotado");
+            WLog.w(TAG, "tempo de ligação esgotado");
             cleanupAndRetry();
         }
     };

@@ -3,20 +3,27 @@ package io.github.jacobhortencio.watchbridge.phone;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import io.github.jacobhortencio.watchbridge.common.Secure;
+
 final class Prefs {
     private Prefs() {}
 
-    private static final int HR_MAX = 500;
+    private static final int HR_MAX = 2000;
 
-    private static SharedPreferences p(Context c) {
+    static SharedPreferences p(Context c) {
         return c.getSharedPreferences("wb", Context.MODE_PRIVATE);
     }
+
+    // ---------- ligação ----------
 
     static String watchIp(Context c) {
         return p(c).getString("watch_ip", "");
@@ -26,6 +33,32 @@ final class Prefs {
         p(c).edit().putString("watch_ip", ip == null ? "" : ip.trim()).apply();
     }
 
+    static String bondedAddr(Context c) {
+        return p(c).getString("bonded", "");
+    }
+
+    static void setBondedAddr(Context c, String a) {
+        p(c).edit().putString("bonded", a == null ? "" : a).apply();
+    }
+
+    // ---------- emparelhamento ----------
+
+    private static volatile byte[] keyCache;
+
+    static byte[] key(Context c) {
+        byte[] k = keyCache;
+        if (k != null) return k;
+        String s = p(c).getString("pair_key", "");
+        if (s.isEmpty()) return null;
+        keyCache = Secure.unb64(s);
+        return keyCache;
+    }
+
+    static void setKey(Context c, byte[] key) {
+        keyCache = key;
+        p(c).edit().putString("pair_key", key == null ? "" : Secure.b64(key)).apply();
+    }
+
     // ---------- saúde ----------
 
     static synchronized void saveHealth(Context c, int hr, int steps, long time) {
@@ -33,28 +66,32 @@ final class Prefs {
         long t = time > 0 ? time : System.currentTimeMillis();
         if (hr > 0) {
             if (t >= p(c).getLong("hr_t", 0)) e.putInt("hr", hr).putLong("hr_t", t);
-            String hist = p(c).getString("hr_hist", "");
-            StringBuilder sb = new StringBuilder(hist);
-            if (sb.length() > 0) sb.append(';');
-            sb.append(t).append(':').append(hr);
-            String[] parts = sb.toString().split(";");
-            if (parts.length > HR_MAX) {
-                sb.setLength(0);
-                for (int i = parts.length - HR_MAX; i < parts.length; i++) {
-                    if (sb.length() > 0) sb.append(';');
-                    sb.append(parts[i]);
-                }
-            }
-            e.putString("hr_hist", sb.toString());
+            e.putString("hr_hist", appendCapped(p(c).getString("hr_hist", ""), t + ":" + hr, HR_MAX));
         }
-        if (steps >= 0) e.putInt("steps", steps).putLong("steps_t", t);
+        if (steps >= 0) {
+            e.putInt("steps", steps).putLong("steps_t", t);
+            e.putString("steps_hist", appendCapped(p(c).getString("steps_hist", ""), t + ":" + steps, HR_MAX));
+        }
         e.apply();
     }
 
-    /** Pares {tempo, bpm}, ordenados por tempo. */
-    static List<long[]> hrHistory(Context c) {
+    private static String appendCapped(String hist, String item, int max) {
+        StringBuilder sb = new StringBuilder(hist);
+        if (sb.length() > 0) sb.append(';');
+        sb.append(item);
+        String[] parts = sb.toString().split(";");
+        if (parts.length <= max) return sb.toString();
+        sb.setLength(0);
+        for (int i = parts.length - max; i < parts.length; i++) {
+            if (sb.length() > 0) sb.append(';');
+            sb.append(parts[i]);
+        }
+        return sb.toString();
+    }
+
+    static List<long[]> history(Context c, String key) {
         List<long[]> out = new ArrayList<>();
-        String h = p(c).getString("hr_hist", "");
+        String h = p(c).getString(key, "");
         if (h.isEmpty()) return out;
         for (String s : h.split(";")) {
             int i = s.indexOf(':');
@@ -68,6 +105,14 @@ final class Prefs {
         return out;
     }
 
+    static List<long[]> hrHistory(Context c) {
+        return history(c, "hr_hist");
+    }
+
+    static List<long[]> stepsHistory(Context c) {
+        return history(c, "steps_hist");
+    }
+
     static int lastHr(Context c) {
         return p(c).getInt("hr", -1);
     }
@@ -78,6 +123,20 @@ final class Prefs {
 
     static int lastSteps(Context c) {
         return p(c).getInt("steps", -1);
+    }
+
+    // ---------- relógio ----------
+
+    static void setWatchBattery(Context c, int level, boolean charging) {
+        p(c).edit().putInt("w_bat", level).putBoolean("w_chg", charging).apply();
+    }
+
+    static int watchBattery(Context c) {
+        return p(c).getInt("w_bat", -1);
+    }
+
+    static boolean watchCharging(Context c) {
+        return p(c).getBoolean("w_chg", false);
     }
 
     static void setSensors(Context c, String list) {
@@ -108,5 +167,78 @@ final class Prefs {
     static void addSeenApp(Context c, String pkg) {
         Set<String> s = seenApps(c);
         if (s.add(pkg)) p(c).edit().putStringSet("seen", s).apply();
+    }
+
+    /** Padrão de vibração por app (0 normal, 1 curto, 2 longo, 3 forte, 4 sem vibração). */
+    static int vibFor(Context c, String pkg) {
+        return p(c).getInt("vib_" + pkg, 0);
+    }
+
+    static void setVibFor(Context c, String pkg, int v) {
+        p(c).edit().putInt("vib_" + pkg, v).apply();
+    }
+
+    static final String[] VIB_NAMES = {"Normal", "Curta", "Longa", "Forte", "Sem vibração"};
+
+    // ---------- definições (ecrã Definições) ----------
+
+    static String str(Context c, String k, String def) {
+        return p(c).getString(k, def);
+    }
+
+    static boolean bool(Context c, String k, boolean def) {
+        return p(c).getBoolean(k, def);
+    }
+
+    static int integer(Context c, String k, int def) {
+        return p(c).getInt(k, def);
+    }
+
+    static List<String> list(Context c, String k, String def) {
+        List<String> out = new ArrayList<>();
+        for (String s : str(c, k, def).split("\n|,")) {
+            String t = s.trim();
+            if (!t.isEmpty()) out.add(t);
+        }
+        return out;
+    }
+
+    static final String DEFAULT_REPLIES = "Ok\nJá te ligo\nEstou a conduzir\nEstou numa reunião\nA caminho\nObrigado!";
+
+    /** Configuração enviada ao relógio. */
+    static JSONObject watchConfig(Context c) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("replies", new JSONArray(list(c, "replies", DEFAULT_REPLIES)));
+            o.put("quietOn", bool(c, "quiet_on", false));
+            o.put("quietStart", integer(c, "quiet_start", 23));
+            o.put("quietEnd", integer(c, "quiet_end", 7));
+            o.put("hrAlert", integer(c, "hr_alert", 120));
+            o.put("hrAlertOn", bool(c, "hr_alert_on", false));
+            o.put("moveOn", bool(c, "move_on", false));
+            o.put("waterOn", bool(c, "water_on", false));
+            o.put("lostAlertOn", bool(c, "lost_alert_watch", true));
+        } catch (Exception ignored) {
+        }
+        return o;
+    }
+
+    // ---------- meteorologia ----------
+
+    static double lat(Context c) {
+        return Double.longBitsToDouble(p(c).getLong("lat", Double.doubleToLongBits(-12.5763)));
+    }
+
+    static double lon(Context c) {
+        return Double.longBitsToDouble(p(c).getLong("lon", Double.doubleToLongBits(13.4055)));
+    }
+
+    static String city(Context c) {
+        return p(c).getString("city", "Benguela");
+    }
+
+    static void setPlace(Context c, double lat, double lon, String city) {
+        p(c).edit().putLong("lat", Double.doubleToLongBits(lat)).putLong("lon", Double.doubleToLongBits(lon))
+                .putString("city", city).apply();
     }
 }

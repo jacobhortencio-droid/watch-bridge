@@ -60,7 +60,7 @@ final class Updater {
                 Log.w("WB-Update", "Wi-Fi falhou", e);
                 wifiErr = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             }
-            if (WatchService.connected()) {
+            if (WatchService.linkedPhysically()) {
                 state = "Sem Wi-Fi (" + wifiErr + "). A descarregar pelo telemóvel...";
                 WatchService.sendToPhone(Msg.of(Proto.UPD_REQ, "have", localVersion(app)));
                 // a resposta chega em onPhoneApk / onPhoneNone
@@ -134,47 +134,6 @@ final class Updater {
 
     private static void install(Context ctx, byte[] apk) throws Exception {
         state = "A instalar...";
-        PackageInstaller pi = ctx.getPackageManager().getPackageInstaller();
-        PackageInstaller.SessionParams p = new PackageInstaller.SessionParams(
-                PackageInstaller.SessionParams.MODE_FULL_INSTALL);
-        p.setAppPackageName(ctx.getPackageName());
-        if (Build.VERSION.SDK_INT >= 31) {
-            p.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
-        }
-        int id = pi.createSession(p);
-        try (PackageInstaller.Session s = pi.openSession(id)) {
-            try (OutputStream out = s.openWrite("base.apk", 0, apk.length)) {
-                out.write(apk);
-                s.fsync(out);
-            }
-            Intent i = new Intent(ctx, InstallReceiver.class);
-            PendingIntent pend = PendingIntent.getBroadcast(ctx, id, i,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-            s.commit(pend.getIntentSender());
-        }
-    }
-
-    public static class InstallReceiver extends BroadcastReceiver {
-        @Override
-        public void onReceive(Context c, Intent intent) {
-            int st = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -999);
-            if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-                Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent.class);
-                if (confirm != null) {
-                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    try {
-                        c.startActivity(confirm);
-                        state = "Confirme a instalação no ecrã";
-                    } catch (Exception e) {
-                        state = "O relógio não deixou abrir o instalador";
-                    }
-                }
-            } else if (st == PackageInstaller.STATUS_SUCCESS) {
-                state = "Atualizado";
-            } else {
-                String msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
-                state = "Falhou: " + (msg == null ? ("código " + st) : msg);
-            }
-        }
+        io.github.jacobhortencio.watchbridge.common.Installer.install(ctx, apk, ctx.getPackageName());
     }
 }

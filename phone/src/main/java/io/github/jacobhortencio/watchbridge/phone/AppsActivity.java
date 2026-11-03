@@ -79,6 +79,17 @@ public class AppsActivity extends Activity {
             final String pkg = a[1];
             sw.setOnCheckedChangeListener((v, on) -> Prefs.setMuted(this, pkg, !on));
             row.addView(sw, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            android.widget.Button vib = new android.widget.Button(this);
+            vib.setAllCaps(false);
+            vib.setTextSize(12);
+            vib.setText("📳 " + Prefs.VIB_NAMES[Prefs.vibFor(this, pkg)]);
+            vib.setOnClickListener(v -> {
+                int next = (Prefs.vibFor(this, pkg) + 1) % Prefs.VIB_NAMES.length;
+                Prefs.setVibFor(this, pkg, next);
+                vib.setText("📳 " + Prefs.VIB_NAMES[next]);
+            });
+            row.addView(vib);
             col.addView(row);
         }
 

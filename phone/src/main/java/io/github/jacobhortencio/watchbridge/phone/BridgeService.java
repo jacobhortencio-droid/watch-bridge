@@ -20,7 +20,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Base64;
-import android.util.Log;
 
 import org.json.JSONObject;
 
@@ -31,32 +30,45 @@ import java.net.Socket;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import io.github.jacobhortencio.watchbridge.common.Http;
 import io.github.jacobhortencio.watchbridge.common.Msg;
+import io.github.jacobhortencio.watchbridge.common.Pairing;
 import io.github.jacobhortencio.watchbridge.common.Proto;
+import io.github.jacobhortencio.watchbridge.common.SecureLink;
 import io.github.jacobhortencio.watchbridge.common.TcpLink;
+import io.github.jacobhortencio.watchbridge.common.WLog;
 
 /** Serviço permanente que mantém a ligação ao relógio. */
 public class BridgeService extends Service implements BleCentral.Listener, TcpLink.Listener {
     private static final String TAG = "WB";
     private static final int NID = 1;
+    private static final int LOST_NID = 2;
+    private static final int WBAT_NID = 3;
     private static final String CH = "bridge";
+    private static final String CH_ALERT = "alerts";
 
     private static volatile BridgeService instance;
     private static volatile String status = "Parado";
+    static volatile String watchLog = "";
+    static volatile Pairing pairing;
+    static volatile String pairState = "";
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private final Set<String> sentIcons = ConcurrentHashMap.newKeySet();
     private BleCentral ble;
     private volatile TcpLink tcp;
     private volatile boolean tcpConnecting;
+    private SecureLink link;
+    private boolean wasReady;
     private int lastBattery = -1;
     private boolean lastCharging;
+    private boolean watchLowWarned;
 
     public static void start(Context c) {
         try {
             c.startForegroundService(new Intent(c, BridgeService.class));
         } catch (Exception e) {
-            Log.w(TAG, "não foi possível iniciar o serviço", e);
+            WLog.w(TAG, "não foi possível iniciar o serviço", e);
         }
     }
 
@@ -74,9 +86,20 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         if (b != null) b.h.post(b::updateNotif);
     }
 
+    /** Há ligação física (pode ainda não estar emparelhado). */
+    static boolean linked() {
+        BridgeService b = instance;
+        return b != null && b.isLinked();
+    }
+
+    /** Ligado, emparelhado e com sessão segura aberta. */
     static boolean connected() {
         BridgeService b = instance;
-        return b != null && b.isConnected();
+        return b != null && b.isLinked() && b.link.ready();
+    }
+
+    static boolean paired(Context c) {
+        return Prefs.key(c) != null;
     }
 
     static void send(JSONObject m) {
@@ -88,19 +111,25 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     public void onCreate() {
         super.onCreate();
         instance = this;
+        link = new SecureLink(() -> Prefs.key(this));
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(CH, "Ligação ao relógio", NotificationManager.IMPORTANCE_MIN));
+        nm.createNotificationChannel(new NotificationChannel(CH_ALERT, "Avisos do relógio", NotificationManager.IMPORTANCE_HIGH));
         try {
             startForeground(NID, buildNotif(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
         } catch (Exception e) {
-            Log.w(TAG, "startForeground falhou (faltam permissões?)", e);
+            WLog.w(TAG, "startForeground falhou (faltam permissões?)", e);
             stopSelf();
             return;
         }
         ble = new BleCentral(this, this);
         ble.start();
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED);
+        registerReceiver(dndReceiver, new IntentFilter(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED),
+                Context.RECEIVER_NOT_EXPORTED);
         h.postDelayed(tick, 2_000);
+        h.postDelayed(() -> PhoneUpdater.checkQuietly(this), 60_000);
+        WLog.i(TAG, "serviço iniciado, versão " + PhoneUpdater.localVersion(this));
     }
 
     @Override
@@ -117,6 +146,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         if (t != null) t.close();
         try {
             unregisterReceiver(batteryReceiver);
+            unregisterReceiver(dndReceiver);
         } catch (Exception ignored) {
         }
         status = "Parado";
@@ -128,26 +158,42 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         return null;
     }
 
-    // ---------- ligação ----------
+    BleCentral ble() {
+        return ble;
+    }
 
-    boolean isConnected() {
+    // ---------- transporte ----------
+
+    boolean isLinked() {
         return (ble != null && ble.isReady()) || tcp != null;
     }
 
+    /** Envia pela camada segura (as mensagens normais só saem cifradas). */
     void sendNow(JSONObject m) {
+        JSONObject wire = link == null ? null : link.wrap(m);
+        if (wire != null) sendRaw(wire);
+    }
+
+    private void sendRaw(JSONObject wire) {
         if (ble != null && ble.isReady()) {
-            ble.send(m);
+            ble.send(wire);
             return;
         }
         TcpLink t = tcp;
-        if (t != null) t.send(m);
+        if (t != null) t.send(wire);
     }
 
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
             if (!(ble != null && ble.isReady()) && tcp == null) tryTcp();
-            if (isConnected()) sendNow(Msg.of(Proto.PING));
+            if (isLinked()) sendRaw(Msg.of(Proto.PING));
+            Pairing p = pairing;
+            if (p != null && p.expired()) {
+                pairing = null;
+                pairState = "O emparelhamento expirou. Tente de novo.";
+            }
+            if (connected()) Weather.refresh(BridgeService.this, false);
             h.postDelayed(this, 15_000);
         }
     };
@@ -174,12 +220,33 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         }, "wb-tcp-connect").start();
     }
 
+    private String via = "";
+
     private void onLinkUp(String via) {
-        status = "Ligado por " + via;
+        this.via = via;
+        WLog.i(TAG, "ligação física por " + via);
+        link.reset();
+        sendRaw(link.sessionMsg("phone"));
+        status = "A abrir sessão segura...";
+        updateNotif();
+    }
+
+    /** Sessão segura aberta: sincroniza tudo. */
+    private void onSecureReady() {
+        if (wasReady) return;
+        wasReady = true;
+        h.removeCallbacks(lostAlert);
+        getSystemService(NotificationManager.class).cancel(LOST_NID);
+        status = "Ligado por " + via + " 🔒";
         updateNotif();
         sentIcons.clear();
-        sendNow(Msg.of(Proto.HELLO, "name", Build.MANUFACTURER + " " + Build.MODEL));
-        sendBattery(true);
+        WLog.i(TAG, "sessão segura aberta");
+        sendNow(Msg.of(Proto.HELLO, "name", Build.MANUFACTURER + " " + Build.MODEL,
+                "ver", PhoneUpdater.localVersion(this)));
+        pushConfig();
+        sendBattery();
+        sendDnd();
+        Weather.refresh(this, false);
         NotifListener l = NotifListener.get();
         if (l != null) {
             l.syncAll();
@@ -187,12 +254,31 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         }
     }
 
+    private void onSecureLost() {
+        if (!wasReady) return;
+        wasReady = false;
+        WLog.i(TAG, "ligação perdida");
+        if (Prefs.bool(this, "lost_alert_phone", true)) h.postDelayed(lostAlert, 60_000);
+    }
+
+    /** Alarme de separação: avisa no telemóvel se o relógio ficar longe. */
+    private final Runnable lostAlert = () -> {
+        if (connected()) return;
+        alert(LOST_NID, "Relógio desligado", "Perdeu-se a ligação ao relógio há mais de um minuto.");
+    };
+
     @Override
     public void onConnectionChanged(boolean connected) {
         if (connected) {
             onLinkUp("Bluetooth");
         } else {
-            status = tcp != null ? "Ligado por Wi-Fi" : "Desligado, a tentar de novo...";
+            if (tcp == null) {
+                status = "Desligado, a tentar de novo...";
+                onSecureLost();
+            } else {
+                link.reset();
+                sendRaw(link.sessionMsg("phone"));
+            }
             updateNotif();
         }
     }
@@ -208,22 +294,121 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     }
 
     @Override
-    public void onClosed(TcpLink link) {
+    public void onClosed(TcpLink l) {
         h.post(() -> {
-            if (tcp == link) tcp = null;
+            if (tcp == l) tcp = null;
             if (!(ble != null && ble.isReady())) {
                 status = "Desligado, a tentar de novo...";
+                onSecureLost();
                 updateNotif();
             }
         });
     }
 
+    // ---------- emparelhamento ----------
+
+    void startPairing() {
+        if (!isLinked()) {
+            pairState = "O relógio não está ligado. Abra a app no relógio e aproxime-o.";
+            return;
+        }
+        try {
+            Pairing p = new Pairing(true);
+            pairing = p;
+            pairState = "A falar com o relógio...";
+            sendRaw(Msg.of(Proto.PAIR_START, "pub", p.pubPhone));
+            WLog.i(TAG, "emparelhamento iniciado");
+        } catch (Exception e) {
+            pairState = "Erro: " + e.getMessage();
+        }
+    }
+
+    void confirmPairing() {
+        Pairing p = pairing;
+        if (p == null || p.key == null) return;
+        p.localOk = true;
+        sendRaw(Msg.of(Proto.PAIR_OK, "proof", p.proof()));
+        pairState = p.peerOk ? "" : "Agora confirme também no relógio.";
+        maybeFinishPairing();
+    }
+
+    void cancelPairing() {
+        if (pairing != null) sendRaw(Msg.of(Proto.PAIR_CANCEL));
+        pairing = null;
+        pairState = "Emparelhamento cancelado.";
+    }
+
+    private void maybeFinishPairing() {
+        Pairing p = pairing;
+        if (p == null || !p.done()) return;
+        Prefs.setKey(this, p.key);
+        pairing = null;
+        pairState = "Emparelhado com sucesso 🔒";
+        WLog.i(TAG, "emparelhamento concluído");
+        wasReady = false;
+        sendRaw(link.sessionMsg("phone"));
+    }
+
+    void unpair() {
+        Prefs.setKey(this, null);
+        wasReady = false;
+        pairState = "Emparelhamento removido.";
+        link.reset();
+        if (isLinked()) sendRaw(link.sessionMsg("phone"));
+    }
+
     // ---------- mensagens vindas do relógio ----------
 
-    private void dispatch(JSONObject m) {
+    private void dispatch(JSONObject wire) {
+        JSONObject m = link.unwrap(wire);
+        if (m == null) return;
         String t = m.optString("t");
         NotifListener l = NotifListener.get();
         switch (t) {
+            case Proto.SESSION: {
+                link.onPeerSession(m);
+                if (!m.optBoolean("ack")) sendRaw(link.sessionMsg("phone", true));
+                if (link.ready()) {
+                    onSecureReady();
+                } else {
+                    wasReady = false;
+                    status = paired(this) ? "O relógio tem outro emparelhamento. Emparelhe de novo."
+                            : "Ligado. Falta emparelhar (toque em Emparelhar).";
+                    updateNotif();
+                }
+                break;
+            }
+            case Proto.PAIR_KEY: {
+                Pairing p = pairing;
+                if (p == null) break;
+                try {
+                    p.onPeerPub(m.optString("pub"));
+                    pairState = "Confirme que o relógio mostra o código " + p.code;
+                } catch (Exception e) {
+                    pairState = "Erro no emparelhamento: " + e.getMessage();
+                    pairing = null;
+                }
+                break;
+            }
+            case Proto.PAIR_OK: {
+                Pairing p = pairing;
+                if (p == null) break;
+                if (p.checkPeerProof(m.optString("proof"))) {
+                    p.peerOk = true;
+                    if (!p.localOk) pairState = "O relógio confirmou. Confirme o código " + p.code + " aqui.";
+                    maybeFinishPairing();
+                } else {
+                    pairState = "Os códigos não coincidem. Emparelhamento recusado.";
+                    pairing = null;
+                }
+                break;
+            }
+            case Proto.PAIR_CANCEL:
+                if (pairing != null) {
+                    pairing = null;
+                    pairState = "Cancelado no relógio.";
+                }
+                break;
             case Proto.DISMISS:
                 if (l != null) l.dismiss(m.optString("key"));
                 break;
@@ -246,18 +431,67 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             case Proto.HEALTH:
                 Prefs.saveHealth(this, m.optInt("hr", -1), m.optInt("steps", -1), m.optLong("time", 0));
                 break;
-            case Proto.HELLO:
-                if (l != null) l.syncAll();
-                sendBattery(true);
+            case Proto.WATCH_BATTERY:
+                onWatchBattery(m.optInt("level", -1), m.optBoolean("charging"));
+                break;
+            case Proto.SET_DND:
+                PhoneActions.setDnd(this, m.optBoolean("on"));
                 break;
             case Proto.SENSORS:
                 Prefs.setSensors(this, m.optString("list"));
                 break;
+            case Proto.LOG:
+                watchLog = m.optString("text");
+                break;
             case Proto.UPD_REQ:
                 relayWatchUpdate(m.optLong("have", 0));
                 break;
+            case Proto.HELLO:
+                if (l != null) l.syncAll();
+                sendBattery();
+                break;
             default:
                 break;
+        }
+    }
+
+    // ---------- configuração e estado ----------
+
+    void pushConfig() {
+        JSONObject c = Prefs.watchConfig(this);
+        try {
+            c.put("t", Proto.CONFIG);
+        } catch (Exception ignored) {
+        }
+        sendNow(c);
+    }
+
+    void requestWatchLog() {
+        sendNow(Msg.of(Proto.LOG_REQ));
+    }
+
+    private final BroadcastReceiver dndReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent i) {
+            sendDnd();
+        }
+    };
+
+    private void sendDnd() {
+        int f = getSystemService(NotificationManager.class).getCurrentInterruptionFilter();
+        sendNow(Msg.of(Proto.DND, "on", f != NotificationManager.INTERRUPTION_FILTER_ALL
+                && f != NotificationManager.INTERRUPTION_FILTER_UNKNOWN));
+    }
+
+    private void onWatchBattery(int level, boolean charging) {
+        Prefs.setWatchBattery(this, level, charging);
+        updateNotif();
+        if (level >= 0 && level <= 15 && !charging && !watchLowWarned) {
+            watchLowWarned = true;
+            alert(WBAT_NID, "Bateria do relógio fraca", "O relógio está com " + level + "%.");
+        } else if (charging || level > 20) {
+            watchLowWarned = false;
+            getSystemService(NotificationManager.class).cancel(WBAT_NID);
         }
     }
 
@@ -266,8 +500,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     private void relayWatchUpdate(long have) {
         new Thread(() -> {
             try {
-                io.github.jacobhortencio.watchbridge.common.Http.Release r =
-                        io.github.jacobhortencio.watchbridge.common.Http.latest(null);
+                Http.Release r = Http.latest(null);
                 if (r.version > 0 && r.version <= have) {
                     sendNow(Msg.of(Proto.UPD_NONE, "msg", "Já tem a versão mais recente (" + have + ")"));
                     return;
@@ -276,12 +509,12 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
                     sendNow(Msg.of(Proto.UPD_NONE, "msg", "APK não encontrado no GitHub"));
                     return;
                 }
-                byte[] apk = io.github.jacobhortencio.watchbridge.common.Http.get(r.watchApkUrl, null);
-                sendNow(Msg.of(Proto.UPD_APK, "ver", r.version,
-                        "b64", Base64.encodeToString(apk, Base64.NO_WRAP)));
+                byte[] apk = Http.get(r.watchApkUrl, null);
+                // a atualização viaja em claro: o Android só a aceita com a nossa assinatura
+                sendRaw(Msg.of(Proto.UPD_APK, "ver", r.version, "b64", Base64.encodeToString(apk, Base64.NO_WRAP)));
             } catch (Exception e) {
-                Log.w(TAG, "atualização via telemóvel falhou", e);
-                sendNow(Msg.of(Proto.UPD_NONE, "msg", "O telemóvel não conseguiu descarregar: " + e.getMessage()));
+                WLog.w(TAG, "atualização via telemóvel falhou", e);
+                sendRaw(Msg.of(Proto.UPD_NONE, "msg", "O telemóvel não conseguiu descarregar: " + e.getMessage()));
             }
         }, "wb-relay-update").start();
     }
@@ -302,7 +535,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             b.compress(Bitmap.CompressFormat.PNG, 100, bos);
             sendNow(Msg.of(Proto.ICON, "pkg", pkg, "png", Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)));
         } catch (Exception e) {
-            Log.w(TAG, "ícone falhou para " + pkg, e);
+            WLog.w(TAG, "ícone falhou para " + pkg, e);
         }
     }
 
@@ -319,31 +552,46 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             if (pct != lastBattery || charging != lastCharging) {
                 lastBattery = pct;
                 lastCharging = charging;
-                sendBattery(false);
+                sendBattery();
             }
         }
     };
 
-    private void sendBattery(boolean force) {
+    private void sendBattery() {
         if (lastBattery < 0) return;
-        if (isConnected()) sendNow(Msg.of(Proto.BATTERY, "level", lastBattery, "charging", lastCharging));
+        sendNow(Msg.of(Proto.BATTERY, "level", lastBattery, "charging", lastCharging));
     }
 
-    // ---------- notificação permanente ----------
+    // ---------- notificações do telemóvel ----------
+
+    private void alert(int id, String title, String text) {
+        PendingIntent pi = PendingIntent.getActivity(this, id, new Intent(this, MainActivity.class),
+                PendingIntent.FLAG_IMMUTABLE);
+        getSystemService(NotificationManager.class).notify(id, new Notification.Builder(this, CH_ALERT)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build());
+    }
 
     private Notification buildNotif() {
         PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_IMMUTABLE);
+        String text = status;
+        int wb = Prefs.watchBattery(this);
+        if (connected() && wb >= 0) text += " · Relógio " + wb + "%" + (Prefs.watchCharging(this) ? " ⚡" : "");
         return new Notification.Builder(this, CH)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentTitle("Watch Bridge")
-                .setContentText(status)
+                .setContentText(text)
                 .setContentIntent(pi)
                 .setOngoing(true)
                 .build();
     }
 
-    private void updateNotif() {
+    void updateNotif() {
         if (instance == null) return;
         getSystemService(NotificationManager.class).notify(NID, buildNotif());
     }

@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.BODY_SENSORS_BACKGROUND" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -41,6 +42,9 @@
             </intent-filter>
         </activity>
         <activity android:name=".MusicActivity" android:exported="false" />
+        <activity android:name=".PairActivity" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true" />
+        <activity android:name=".HistoryActivity" android:exported="false" />
+        <activity android:name=".WeatherActivity" android:exported="false" />
         <activity android:name=".HealthActivity" android:exported="false" />
 
         <service
@@ -49,7 +53,7 @@
             android:foregroundServiceType="connectedDevice|health" />
 
         <receiver
-            android:name=".Updater$InstallReceiver"
+            android:name="io.github.jacobhortencio.watchbridge.common.Installer$Receiver"
             android:exported="false" />
 
         <receiver
