@@ -127,6 +127,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED);
         registerReceiver(dndReceiver, new IntentFilter(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED),
                 Context.RECEIVER_NOT_EXPORTED);
+        CallBridge.register(this);
         h.postDelayed(tick, 2_000);
         h.postDelayed(() -> PhoneUpdater.checkQuietly(this), 60_000);
         WLog.i(TAG, "serviço iniciado, versão " + PhoneUpdater.localVersion(this));
@@ -142,6 +143,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         instance = null;
         h.removeCallbacksAndMessages(null);
         if (ble != null) ble.stop();
+        CallBridge.unregister(this);
         TcpLink t = tcp;
         if (t != null) t.close();
         try {
@@ -436,6 +438,15 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
                 break;
             case Proto.SET_DND:
                 PhoneActions.setDnd(this, m.optBoolean("on"));
+                break;
+            case Proto.CALL_CMD:
+                CallBridge.command(this, m.optString("cmd"), m.optString("text"));
+                break;
+            case Proto.CALLS_REQ:
+                new Thread(() -> CallBridge.sendList(this), "wb-calls").start();
+                break;
+            case Proto.DIAL:
+                CallBridge.dial(this, m.optString("number"));
                 break;
             case Proto.SENSORS:
                 Prefs.setSensors(this, m.optString("list"));

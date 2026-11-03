@@ -48,6 +48,9 @@ public final class Proto {
     public static final String CONFIG = "config";
     public static final String WEATHER = "weather";
     public static final String DND = "dnd";
+    public static final String CALL = "call";        // estado da chamada: ringing / offhook / idle
+    public static final String CALLS = "calls";      // recentes + favoritos
+    public static final String NAV = "nav";          // indicações de navegação
 
     // ---------- relógio -> telemóvel ----------
     public static final String DISMISS = "dismiss";
@@ -60,6 +63,9 @@ public final class Proto {
     public static final String SENSORS = "sensors";
     public static final String WATCH_BATTERY = "w_battery";
     public static final String SET_DND = "set_dnd";
+    public static final String CALL_CMD = "call_cmd";  // answer / decline / hangup / mute / sms
+    public static final String CALLS_REQ = "calls_req";
+    public static final String DIAL = "dial";
 
     // ---------- atualização do relógio através do telemóvel ----------
     public static final String UPD_REQ = "upd_req";   // relógio -> telemóvel

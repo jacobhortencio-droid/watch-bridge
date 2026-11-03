@@ -234,6 +234,7 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         secureReady = true;
         WLog.i(TAG, "sessão segura aberta");
         updateStatus();
+        refreshSurfaces();
         send(Msg.of(Proto.HELLO, "name", Build.MODEL, "ver", Updater.localVersion(this)));
         sendSteps(true);
         sendSensorList();
@@ -393,7 +394,28 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                 notifier.cacheIcon(m.optString("pkg"), m.optString("png"));
                 break;
             case Proto.MEDIA:
+                if (!m.optString("art").isEmpty()) MusicArt.put(m.optString("artKey"), m.optString("art"));
+                try {
+                    m.put("at", System.currentTimeMillis());
+                    m.remove("art");
+                } catch (Exception ignored) {
+                }
                 media = m;
+                Ongoing.music(this, m);
+                refreshSurfaces();
+                break;
+            case Proto.CALL:
+                CallActivity.onCall(this, m);
+                break;
+            case Proto.CALLS:
+                try {
+                    m.put("time", System.currentTimeMillis());
+                } catch (Exception ignored) {
+                }
+                CallsActivity.data = m;
+                break;
+            case Proto.NAV:
+                Ongoing.navigation(this, m, notifier);
                 break;
             case Proto.BATTERY:
                 phoneBattery = m.optInt("level", -1);
@@ -406,6 +428,7 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                     lowWarned = false;
                     notifier.cancel(Notifier.LOWBAT_ID);
                 }
+                refreshSurfaces();
                 break;
             case Proto.RING:
                 notifier.ring(m.optBoolean("on", true));
@@ -415,9 +438,11 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                 break;
             case Proto.WEATHER:
                 WPrefs.setWeather(this, m);
+                refreshSurfaces();
                 break;
             case Proto.DND:
                 phoneDnd = m.optBoolean("on");
+                refreshSurfaces();
                 break;
             case Proto.LOG_REQ:
                 send(Msg.of(Proto.LOG, "text", WLog.dump()));
@@ -434,6 +459,16 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
             default:
                 break;
         }
+    }
+
+    private long lastSurfaceRefresh;
+
+    /** Atualiza mosaicos e complicações (no máximo de 20 em 20 segundos). */
+    void refreshSurfaces() {
+        long now = System.currentTimeMillis();
+        if (now - lastSurfaceRefresh < 20_000) return;
+        lastSurfaceRefresh = now;
+        Complications.refreshAll(this);
     }
 
     /** Lista de sensores do relógio, para descobrir o que mais dá para ler (SpO2, temperatura...). */
@@ -562,6 +597,7 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
 
     void reportHealth(int bpm) {
         lastHr = bpm;
+        refreshSurfaces();
         reportSample(bpm);
         JSONObject cfg = WPrefs.cfg(this);
         long now = System.currentTimeMillis();

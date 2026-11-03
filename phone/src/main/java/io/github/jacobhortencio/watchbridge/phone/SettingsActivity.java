@@ -48,6 +48,9 @@ public class SettingsActivity extends Activity {
         text("important_words", "Palavras importantes: vibração forte (vírgulas)", "");
         text("vip", "Contactos importantes: vibração forte e ignoram o silêncio (vírgulas)", "");
 
+        section("Chamadas");
+        toggle("call_screen", "Ecrã de chamada próprio no relógio (nome, foto, recusar com SMS)", true);
+
         section("Horário de silêncio (no relógio)");
         toggle("quiet_on", "Ativo (chamadas, alarmes e contactos importantes passam)", false);
         number("quiet_start", "Começa às (hora, 0 a 23)", 23);

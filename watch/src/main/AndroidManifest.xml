@@ -41,11 +41,89 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".MusicActivity" android:exported="false" />
         <activity android:name=".PairActivity" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity android:name=".HistoryActivity" android:exported="false" />
         <activity android:name=".WeatherActivity" android:exported="false" />
-        <activity android:name=".HealthActivity" android:exported="false" />
+        <activity android:name=".HealthActivity" android:exported="true" />
+        <activity android:name=".BreatheActivity" android:exported="true" />
+        <activity android:name=".NavActivity" android:exported="false" />
+        <activity android:name=".CallsActivity" android:exported="false" />
+        <activity android:name=".CallActivity" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true" android:launchMode="singleTop" />
+        <activity android:name=".MusicActivity" android:exported="true" />
+
+        <!-- mosaicos -->
+        <service
+            android:name=".MainTileService"
+            android:exported="true"
+            android:label="Watch Bridge"
+            android:icon="@drawable/ic_stat"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
+        <service
+            android:name=".HealthTileService"
+            android:exported="true"
+            android:label="Saúde (Watch Bridge)"
+            android:icon="@drawable/ic_heart"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_heart" />
+        </service>
+
+        <!-- complicações -->
+        <service
+            android:name=".Complications$PhoneBattery"
+            android:exported="true"
+            android:label="Bateria do telemóvel"
+            android:icon="@drawable/ic_phone"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="RANGED_VALUE,SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="0" />
+        </service>
+        <service
+            android:name=".Complications$Steps"
+            android:exported="true"
+            android:label="Passos (Watch Bridge)"
+            android:icon="@drawable/ic_steps"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="RANGED_VALUE,SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="600" />
+        </service>
+        <service
+            android:name=".Complications$Heart"
+            android:exported="true"
+            android:label="Frequência cardíaca (Watch Bridge)"
+            android:icon="@drawable/ic_heart"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="SHORT_TEXT,RANGED_VALUE" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="0" />
+        </service>
+        <service
+            android:name=".Complications$Weather"
+            android:exported="true"
+            android:label="Tempo (Watch Bridge)"
+            android:icon="@drawable/ic_weather"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data android:name="android.support.wearable.complications.SUPPORTED_TYPES" android:value="SHORT_TEXT" />
+            <meta-data android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS" android:value="0" />
+        </service>
 
         <service
             android:name=".WatchService"

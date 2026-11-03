@@ -49,3 +49,12 @@ android {
 dependencies {
     implementation project(':common')
 }
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.wear.tiles:tiles:1.4.1'
+    implementation 'androidx.wear.protolayout:protolayout:1.2.1'
+    implementation 'androidx.wear.watchface:watchface-complications-data-source:1.2.1'
+    implementation 'androidx.wear:wear-ongoing:1.0.0'
+    implementation 'com.google.guava:guava:33.3.1-android'
+}

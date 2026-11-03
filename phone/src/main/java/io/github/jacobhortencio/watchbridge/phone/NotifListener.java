@@ -74,9 +74,58 @@ public class NotifListener extends NotificationListenerService {
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
+        if (sbn.getKey().equals(navKey)) {
+            navKey = null;
+            navSig = "";
+            BridgeService.send(Msg.of(Proto.NAV, "end", true));
+            return;
+        }
         if (lastSent.remove(sbn.getKey()) != null) {
             BridgeService.send(Msg.of(Proto.NOTIF_RM, "key", sbn.getKey()));
         }
+    }
+
+    // ---------- navegação ----------
+
+    private static final java.util.Set<String> NAV_APPS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "com.google.android.apps.maps", "com.waze", "app.organicmaps", "app.comaps", "net.osmand",
+            "net.osmand.plus", "com.here.app.maps", "com.sygic.aura", "com.autonavi.minimap", "com.baidu.BaiduMap"));
+    private volatile String navKey;
+    private volatile String navSig = "";
+
+    private boolean isNavigation(StatusBarNotification sbn) {
+        Notification n = sbn.getNotification();
+        if (Notification.CATEGORY_NAVIGATION.equals(n.category)) return true;
+        return sbn.isOngoing() && NAV_APPS.contains(sbn.getPackageName());
+    }
+
+    private void forwardNav(StatusBarNotification sbn, boolean force) {
+        Notification n = sbn.getNotification();
+        Bundle ex = n.extras;
+        String title = str(ex, Notification.EXTRA_TITLE);
+        String text = str(ex, Notification.EXTRA_TEXT);
+        String sub = str(ex, Notification.EXTRA_SUB_TEXT);
+        if (sub.isEmpty()) sub = str(ex, Notification.EXTRA_BIG_TEXT);
+        String sig = title + "|" + text + "|" + sub;
+        if (!force && sig.equals(navSig)) return;
+        navSig = sig;
+        navKey = sbn.getKey();
+        JSONObject m = Msg.of(Proto.NAV, "title", title, "text", text, "sub", sub, "app", appLabel(sbn.getPackageName()));
+        try {
+            android.graphics.drawable.Icon li = n.getLargeIcon();
+            if (li != null) {
+                android.graphics.drawable.Drawable d = li.loadDrawable(this);
+                if (d != null) {
+                    android.graphics.Bitmap b = toBitmap(d, 96);
+                    java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                    b.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bos);
+                    m.put("icon", android.util.Base64.encodeToString(bos.toByteArray(), android.util.Base64.NO_WRAP));
+                }
+            }
+        } catch (Exception e) {
+            io.github.jacobhortencio.watchbridge.common.WLog.w("WB-Nav", "ícone falhou", e);
+        }
+        BridgeService.send(m);
     }
 
     // ---------- reencaminhar notificações ----------
@@ -100,7 +149,13 @@ public class NotifListener extends NotificationListenerService {
         if ((n.flags & Notification.FLAG_GROUP_SUMMARY) != 0) return;
         Bundle ex = n.extras;
         if (ex != null && ex.containsKey(Notification.EXTRA_MEDIA_SESSION)) return; // música vai à parte
+        if (isNavigation(sbn)) {
+            forwardNav(sbn, force);
+            return;
+        }
         boolean call = Notification.CATEGORY_CALL.equals(n.category);
+        // com o ecrã de chamada próprio, a notificação do marcador não é reenviada
+        if (call && CallBridge.active(this)) return;
         boolean alarm = Notification.CATEGORY_ALARM.equals(n.category)
                 || Notification.CATEGORY_REMINDER.equals(n.category)
                 || Notification.CATEGORY_EVENT.equals(n.category);
@@ -330,7 +385,35 @@ public class NotifListener extends NotificationListenerService {
         }
     };
 
+    private List<MediaController> sessions = new java.util.ArrayList<>();
+    private String lastArtKey = "";
+
+    /** Troca para o leitor seguinte (quando há vários ativos). */
+    void nextPlayer() {
+        List<MediaController> l = sessions;
+        if (l == null || l.size() < 2) return;
+        int i = 0;
+        for (int k = 0; k < l.size(); k++) {
+            if (controller != null && l.get(k).getSessionToken().equals(controller.getSessionToken())) i = k;
+        }
+        setController(l.get((i + 1) % l.size()));
+    }
+
+    private void setController(MediaController pick) {
+        if (controller != null) {
+            try {
+                controller.unregisterCallback(mediaCb);
+            } catch (Exception ignored) {
+            }
+        }
+        controller = pick;
+        if (controller != null) controller.registerCallback(mediaCb, h);
+        lastArtKey = "";
+        pushMedia();
+    }
+
     private void onSessionsChanged(List<MediaController> list) {
+        sessions = list == null ? new java.util.ArrayList<>() : list;
         MediaController pick = null;
         if (list != null) {
             for (MediaController c : list) {
@@ -369,8 +452,33 @@ public class NotifListener extends NotificationListenerService {
         String title = md == null ? "" : nz(md.getString(MediaMetadata.METADATA_KEY_TITLE));
         String artist = md == null ? "" : nz(md.getString(MediaMetadata.METADATA_KEY_ARTIST));
         boolean playing = st != null && st.getState() == PlaybackState.STATE_PLAYING;
-        BridgeService.send(Msg.of(Proto.MEDIA, "has", true, "title", title, "artist", artist,
-                "app", appLabel(c.getPackageName()), "playing", playing));
+        long dur = md == null ? 0 : md.getLong(MediaMetadata.METADATA_KEY_DURATION);
+        long pos = 0;
+        if (st != null) {
+            pos = st.getPosition();
+            if (playing && st.getLastPositionUpdateTime() > 0) {
+                pos += (long) ((android.os.SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime())
+                        * st.getPlaybackSpeed());
+            }
+        }
+        String artKey = Integer.toHexString((title + "|" + artist + "|" + c.getPackageName()).hashCode());
+        JSONObject m = Msg.of(Proto.MEDIA, "has", true, "title", title, "artist", artist,
+                "app", appLabel(c.getPackageName()), "playing", playing, "dur", dur, "pos", pos,
+                "players", sessions == null ? 1 : sessions.size(), "artKey", artKey);
+        // a capa só viaja quando a faixa muda
+        if (!artKey.equals(lastArtKey) && md != null) {
+            android.graphics.Bitmap art = md.getBitmap(MediaMetadata.METADATA_KEY_ART);
+            if (art == null) art = md.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (art == null) art = md.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+            if (art != null) {
+                try {
+                    m.put("art", jpeg(art, 128, 75));
+                } catch (Exception ignored) {
+                }
+            }
+            lastArtKey = artKey;
+        }
+        BridgeService.send(m);
     }
 
     private static String nz(String s) {

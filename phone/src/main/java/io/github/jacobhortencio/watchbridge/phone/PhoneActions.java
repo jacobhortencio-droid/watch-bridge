@@ -30,6 +30,10 @@ final class PhoneActions {
             return;
         }
         NotifListener l = NotifListener.get();
+        if ("player_next".equals(cmd)) {
+            if (l != null) l.nextPlayer();
+            return;
+        }
         MediaController mc = l == null ? null : l.currentController();
         if (mc == null) return;
         MediaController.TransportControls tc = mc.getTransportControls();

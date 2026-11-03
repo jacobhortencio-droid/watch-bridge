@@ -43,6 +43,10 @@ public class MainActivity extends Activity {
             Manifest.permission.POST_NOTIFICATIONS,
             Manifest.permission.ANSWER_PHONE_CALLS,
             Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CALL_LOG,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.SEND_SMS,
     };
 
     private final Handler h = new Handler(Looper.getMainLooper());
