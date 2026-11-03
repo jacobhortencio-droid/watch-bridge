@@ -54,6 +54,7 @@ public final class Http {
     public static final class Release {
         public final long version;
         public final String watchApkUrl;
+        public String phoneApkUrl;
 
         Release(long version, String watchApkUrl) {
             this.version = version;
@@ -61,20 +62,26 @@ public final class Http {
         }
     }
 
+    public static String getText(String u, Network net) throws IOException {
+        return new String(get(u, net), StandardCharsets.UTF_8);
+    }
+
     public static Release latest(Network net) throws Exception {
         JSONObject rel = new JSONObject(new String(get(Proto.RELEASE_API, net), StandardCharsets.UTF_8));
         Matcher mt = Pattern.compile("(\\d+)").matcher(rel.optString("name"));
         long v = mt.find() ? Long.parseLong(mt.group(1)) : -1;
-        String url = null;
+        String url = null, phone = null;
         JSONArray assets = rel.optJSONArray("assets");
         if (assets != null) {
             for (int i = 0; i < assets.length(); i++) {
                 JSONObject a = assets.optJSONObject(i);
-                if (a != null && Proto.WATCH_ASSET.equals(a.optString("name"))) {
-                    url = a.optString("browser_download_url");
-                }
+                if (a == null) continue;
+                if (Proto.WATCH_ASSET.equals(a.optString("name"))) url = a.optString("browser_download_url");
+                if (Proto.PHONE_ASSET.equals(a.optString("name"))) phone = a.optString("browser_download_url");
             }
         }
-        return new Release(v, url);
+        Release r = new Release(v, url);
+        r.phoneApkUrl = phone;
+        return r;
     }
 }

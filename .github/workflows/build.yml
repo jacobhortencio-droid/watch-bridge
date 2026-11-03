@@ -54,7 +54,7 @@ jobs:
       - name: Compilar
         run: |
           set -o pipefail
-          gradle --no-daemon assembleRelease 2>&1 | tee build.log
+          gradle --no-daemon :common:testReleaseUnitTest assembleRelease 2>&1 | tee build.log
 
       - name: Publicar erros da compilação
         if: failure()
