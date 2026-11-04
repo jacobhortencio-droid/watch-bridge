@@ -102,6 +102,13 @@ final class WatchTools {
         prompt(c, pkg.hashCode(), "Abrir " + label(c, pkg), "Toque para abrir", launch);
     }
 
+    /** Abre a página da app na Play Store do relógio (para instalar o Spotify ou o WhatsApp oficiais). */
+    static void openStore(Context c, String pkg) {
+        Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        prompt(c, pkg.hashCode() + 2, "Instalar " + pkg.substring(pkg.lastIndexOf('.') + 1), "Toque para abrir a Play Store", i);
+    }
+
     static void uninstallApp(Context c, String pkg) {
         Intent del = new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         prompt(c, pkg.hashCode() + 1, "Desinstalar " + label(c, pkg) + "?", "Toque para confirmar", del);

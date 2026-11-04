@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="wa_service_desc">Toca no botão Enviar do WhatsApp quando escreve uma mensagem nova no relógio. Só atua durante 20 segundos depois de um pedido do relógio e não lê as suas conversas.</string>
+</resources>

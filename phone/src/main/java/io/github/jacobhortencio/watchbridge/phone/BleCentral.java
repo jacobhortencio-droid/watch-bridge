@@ -57,6 +57,18 @@ class BleCentral {
     private int writeRetries;
     private int attempt;
 
+    static volatile int lastRssi;
+
+    int mtu() {
+        return mtu;
+    }
+
+    void readRssi() {
+        h.post(() -> {
+            if (gatt != null) gatt.readRemoteRssi();
+        });
+    }
+
     /** Desliga, limpa a cache GATT do Android e volta a procurar o relógio. */
     void reconnectFresh() {
         h.post(() -> {
@@ -226,6 +238,11 @@ class BleCentral {
                     cleanupAndRetry();
                 }
             });
+        }
+
+        @Override
+        public void onReadRemoteRssi(BluetoothGatt g, int rssi, int status) {
+            if (status == BluetoothGatt.GATT_SUCCESS) lastRssi = rssi;
         }
 
         @Override

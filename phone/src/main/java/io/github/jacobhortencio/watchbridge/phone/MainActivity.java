@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        io.github.jacobhortencio.watchbridge.common.Crash.install(this);
         int pad = dp(20);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -147,6 +148,7 @@ public class MainActivity extends Activity {
             }, "wb-shizuku").start();
         });
         button(col, "⌚ Apps do relógio (instalar e gerir)", v -> startActivity(new Intent(this, WatchAppsActivity.class)));
+        button(col, "🔗 Integrações (Spotify, WhatsApp, ações de apps)", v -> startActivity(new Intent(this, IntegrationsActivity.class)));
 
         section(col, "3. Ligação por Wi-Fi (alternativa)");
         TextView ipHelp = new TextView(this);
@@ -198,6 +200,7 @@ public class MainActivity extends Activity {
         col.addView(updHelp);
 
         section(col, "7. Diagnóstico");
+        button(col, "📊 Painel de diagnóstico", v -> startActivity(new Intent(this, DiagActivity.class)));
         button(col, "Copiar registo (telemóvel + relógio)", v -> copyLogs());
         button(col, "Copiar lista de sensores do relógio", v -> {
             String s = Prefs.sensors(this);

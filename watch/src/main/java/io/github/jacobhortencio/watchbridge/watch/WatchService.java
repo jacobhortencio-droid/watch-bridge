@@ -132,6 +132,8 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
     public void onCreate() {
         super.onCreate();
         instance = this;
+        io.github.jacobhortencio.watchbridge.common.Crash.install(this);
+        io.github.jacobhortencio.watchbridge.common.Watchdog.schedule(this, BootReceiver.class);
         link = new SecureLink(() -> WPrefs.key(this));
         notifier = new Notifier(this);
         try {
@@ -425,6 +427,15 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                 break;
             case Proto.NAV:
                 Ongoing.navigation(this, m, notifier);
+                break;
+            case Proto.PING:
+                if (m.has("t")) sendRaw(Msg.of(Proto.PONG, "t", m.optLong("t")));
+                break;
+            case Proto.DIAG:
+                send(Msg.of(Proto.DIAG, "t", m.optLong("t"), "size", m.optString("data").length()));
+                break;
+            case Proto.STORE_OPEN:
+                WatchTools.openStore(this, m.optString("pkg"));
                 break;
             case Proto.AGENDA:
                 try {

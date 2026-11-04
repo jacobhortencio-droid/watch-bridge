@@ -123,6 +123,33 @@ final class HealthData {
      * Limiar adaptativo à noite da pessoa; sono profundo = quase sem movimento e FC baixa.
      */
     static String actigraphySleep(Context c) {
+        float mult = Prefs.p(c).getFloat("sleep_mult", 2f);
+        return actigraphySleep(c, mult, null);
+    }
+
+    /**
+     * Diário do sono: o utilizador diz a que horas se deitou e acordou; escolhe-se o limiar que
+     * melhor coincide e guarda-se para as noites seguintes. Devolve o novo resumo.
+     */
+    static String calibrate(Context c, long bed, long wake) {
+        float best = 2f;
+        long bestErr = Long.MAX_VALUE;
+        for (float m = 1f; m <= 4.01f; m += 0.25f) {
+            long[] out = new long[2];
+            if (actigraphySleep(c, m, out) == null || out[0] == 0) continue;
+            long err = Math.abs(out[0] - bed) + Math.abs(out[1] - wake);
+            if (err < bestErr) {
+                bestErr = err;
+                best = m;
+            }
+        }
+        if (bestErr == Long.MAX_VALUE) return "Ainda não há dados de movimento suficientes desta noite.";
+        Prefs.p(c).edit().putFloat("sleep_mult", best).apply();
+        WLog.i("WB-Health", "sono afinado: multiplicador " + best + ", erro " + bestErr / 60_000 + " min");
+        return "Afinado (erro de " + bestErr / 60_000 + " min). " + actigraphySleep(c);
+    }
+
+    static String actigraphySleep(Context c, float mult, long[] out) {
         long[] w = nightWindow();
         List<long[]> act = new ArrayList<>();
         for (long[] r : Prefs.activityHistory(c)) if (r[0] >= w[0] && r[0] <= w[1]) act.add(r);
@@ -141,7 +168,7 @@ final class HealthData {
         }
         double[] sorted = v.clone();
         java.util.Arrays.sort(sorted);
-        double thr = Math.max(8, Math.min(60, sorted[(int) (n * 0.4)] * 2));
+        double thr = Math.max(5, Math.min(80, sorted[(int) (n * 0.4)] * mult));
         boolean[] asleep = new boolean[n];
         for (int i = 0; i < n; i++) asleep[i] = sm[i] < thr;
 
@@ -165,6 +192,10 @@ final class HealthData {
         if (bestS < 0) return "Não foi detetado um período de sono (sono por movimento).";
         long st = act.get(bestS)[0], en = act.get(bestE)[0];
         long mins = (en - st) / 60_000L;
+        if (out != null) {
+            out[0] = st;
+            out[1] = en;
+        }
         if (mins < 120) return "Não foi detetado um período de sono com mais de 2 horas.";
 
         // FC da noite para separar sono profundo

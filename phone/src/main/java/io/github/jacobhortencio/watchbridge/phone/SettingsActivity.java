@@ -75,6 +75,11 @@ public class SettingsActivity extends Activity {
         text("btn3_name", "Botão 3: nome", "Botão 3");
         text("btn3_url", "Botão 3: webhook (opcional)", "");
 
+        section("Ações de apps (aparecem no relógio em 🔗 Ações)");
+        multiline("app_actions", "Uma por linha: Nome | link (spotify:playlist:..., https://..., google.navigation:q=...)",
+                Integrations.DEFAULT_ACTIONS);
+        text("country_code", "Indicativo do país para números sem indicativo (WhatsApp)", "244");
+
         section("Notificações do relógio");
         toggle("forward_watch", "Mostrar no telemóvel as notificações das apps do relógio", false);
 

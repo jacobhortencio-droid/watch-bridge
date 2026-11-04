@@ -33,6 +33,13 @@
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="market" />
+        </intent>
     </queries>
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -64,6 +71,8 @@
         <activity android:name=".WorkoutActivity" android:exported="false" />
         <activity android:name=".AgendaActivity" android:exported="false" />
         <activity android:name=".Spo2Activity" android:exported="false" />
+        <activity android:name=".MessageActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".ActionsActivity" android:exported="false" />
         <activity android:name=".PhoneCtlActivity" android:exported="true" />
 
         <service

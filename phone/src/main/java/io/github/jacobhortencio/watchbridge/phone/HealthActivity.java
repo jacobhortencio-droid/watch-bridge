@@ -84,6 +84,7 @@ public class HealthActivity extends Activity {
 
         section("Sono");
         text(HealthData.sleepSummary(this));
+        button("Corrigir as horas desta noite (afina o algoritmo)", this::sleepDiary);
 
         section("Altitude e pressão · últimas 24 horas");
         java.util.List<long[]> pres = new java.util.ArrayList<>();
@@ -142,6 +143,27 @@ public class HealthActivity extends Activity {
             BridgeService s = BridgeService.get();
             if (ok && s != null) s.pushConfig();
         }
+    }
+
+    /** Pergunta a hora de deitar e de acordar e afina o sono por movimento. */
+    private void sleepDiary() {
+        java.util.Calendar bed = java.util.Calendar.getInstance();
+        new android.app.TimePickerDialog(this, (v1, bh, bm) -> {
+            java.util.Calendar b = java.util.Calendar.getInstance();
+            b.set(java.util.Calendar.HOUR_OF_DAY, bh);
+            b.set(java.util.Calendar.MINUTE, bm);
+            if (bh >= 12) b.add(java.util.Calendar.DAY_OF_YEAR, -1); // deitou-se ontem à noite
+            new android.app.TimePickerDialog(this, (v2, wh, wm) -> {
+                java.util.Calendar w = java.util.Calendar.getInstance();
+                w.set(java.util.Calendar.HOUR_OF_DAY, wh);
+                w.set(java.util.Calendar.MINUTE, wm);
+                String r = HealthData.calibrate(this, b.getTimeInMillis(), w.getTimeInMillis());
+                new android.app.AlertDialog.Builder(this).setTitle("Sono").setMessage(r)
+                        .setPositiveButton("OK", (d, x) -> build()).show();
+            }, 7, 0, true).show();
+            toast("Agora, a hora a que acordou");
+        }, 23, 0, true).show();
+        toast("Primeiro, a hora a que adormeceu");
     }
 
     private String statsOf(java.util.List<long[]> data, long from, String unit) {

@@ -74,6 +74,11 @@ public final class Proto {
     public static final String APK_ACK = "apk_ack";
     public static final String WNOTIF = "wnotif";    // notificação do próprio relógio
     public static final String RESULT = "result";    // mensagem curta de resultado (ambos os sentidos)
+    public static final String PONG = "pong";        // resposta a PING com "t" (latência)
+    public static final String DIAG = "diag";        // teste de velocidade (eco)
+    public static final String MSG_SEND = "msg_send";    // relógio -> telemóvel: enviar WhatsApp/SMS novo
+    public static final String APP_ACTION = "app_action"; // relógio -> telemóvel: executar ação de app n
+    public static final String STORE_OPEN = "store_open"; // telemóvel -> relógio: abrir a Play Store numa app
     public static final String SENSORS = "sensors";
     public static final String WATCH_BATTERY = "w_battery";
     public static final String SET_DND = "set_dnd";
@@ -91,7 +96,7 @@ public final class Proto {
      * A atualização é segura em claro: o Android só aceita um APK assinado com a mesma chave.
      */
     public static final Set<String> PLAIN = new HashSet<>(Arrays.asList(
-            SESSION, PAIR_START, PAIR_KEY, PAIR_OK, PAIR_CANCEL, PING, LOG_REQ, LOG,
+            SESSION, PAIR_START, PAIR_KEY, PAIR_OK, PAIR_CANCEL, PING, PONG, LOG_REQ, LOG,
             UPD_REQ, UPD_APK, UPD_NONE));
 
     public static final String RELEASE_API =

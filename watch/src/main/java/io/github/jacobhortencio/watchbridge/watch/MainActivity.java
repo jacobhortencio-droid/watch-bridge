@@ -46,6 +46,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        io.github.jacobhortencio.watchbridge.common.Crash.install(this);
         LinearLayout col = Ui.column(this);
         Ui.text(this, col, "Watch Bridge", 16, true);
         status = Ui.text(this, col, "", 13, false);
@@ -66,6 +67,8 @@ public class MainActivity extends Activity {
         });
         Ui.button(this, col, "🔔  Histórico", v -> startActivity(new Intent(this, HistoryActivity.class)));
         Ui.button(this, col, "🌤  Tempo", v -> startActivity(new Intent(this, WeatherActivity.class)));
+        Ui.button(this, col, "✉️  Nova mensagem", v -> startActivity(new Intent(this, MessageActivity.class)));
+        Ui.button(this, col, "🔗  Ações", v -> startActivity(new Intent(this, ActionsActivity.class)));
         Ui.button(this, col, "📞  Chamadas", v -> startActivity(new Intent(this, CallsActivity.class)));
         Ui.button(this, col, "🧭  Navegação", v -> startActivity(new Intent(this, NavActivity.class)));
         Ui.button(this, col, "📅  Agenda", v -> startActivity(new Intent(this, AgendaActivity.class)));

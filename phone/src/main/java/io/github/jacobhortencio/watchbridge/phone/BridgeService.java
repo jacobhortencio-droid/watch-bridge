@@ -51,6 +51,8 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     private static volatile String status = "Parado";
     static volatile String watchLog = "";
     static volatile Pairing pairing;
+    static volatile long lastRtt = -1, diagBack = -1, startedAt;
+    static volatile int sent, received, reconnects;
     static volatile String pairState = "";
 
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -111,6 +113,9 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     public void onCreate() {
         super.onCreate();
         instance = this;
+        io.github.jacobhortencio.watchbridge.common.Crash.install(this);
+        io.github.jacobhortencio.watchbridge.common.Watchdog.schedule(this, BootReceiver.class);
+        startedAt = System.currentTimeMillis();
         link = new SecureLink(() -> Prefs.key(this));
         NotificationManager nm = getSystemService(NotificationManager.class);
         nm.createNotificationChannel(new NotificationChannel(CH, "Ligação ao relógio", NotificationManager.IMPORTANCE_MIN));
@@ -176,7 +181,14 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         if (wire != null) sendRaw(wire);
     }
 
+    /** Para o diagnóstico: mensagens que viajam em claro (ping). */
+    static void sendPlain(JSONObject m) {
+        BridgeService b = instance;
+        if (b != null) b.sendRaw(m);
+    }
+
     private void sendRaw(JSONObject wire) {
+        sent++;
         if (ble != null && ble.isReady()) {
             ble.send(wire);
             return;
@@ -235,6 +247,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             return;
         }
         this.via = via;
+        reconnects++;
         WLog.i(TAG, "ligação física por " + via);
         link.reset();
         peerHeard = false;
@@ -387,6 +400,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     // ---------- mensagens vindas do relógio ----------
 
     private void dispatch(JSONObject wire) {
+        received++;
         JSONObject m = link.unwrap(wire);
         if (m == null) return;
         String t = m.optString("t");
@@ -462,6 +476,19 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
                 break;
             case Proto.WORKOUT:
                 HealthData.saveWorkout(this, m);
+                break;
+            case Proto.PONG:
+                lastRtt = System.currentTimeMillis() - m.optLong("t");
+                break;
+            case Proto.DIAG:
+                diagBack = Math.max(1, System.currentTimeMillis() - m.optLong("t"));
+                break;
+            case Proto.MSG_SEND:
+                new Thread(() -> Integrations.sendMessage(this, m.optString("app"), m.optString("number"),
+                        m.optString("text")), "wb-msg").start();
+                break;
+            case Proto.APP_ACTION:
+                new Thread(() -> Integrations.runAction(this, m.optInt("n", -1)), "wb-action").start();
                 break;
             case Proto.BUTTON:
                 Automation.onWatchButton(this, m.optInt("n", 1));

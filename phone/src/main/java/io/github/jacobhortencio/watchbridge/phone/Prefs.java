@@ -271,6 +271,9 @@ final class Prefs {
             for (int i = 1; i <= 3; i++) btns.put(str(c, "btn" + i + "_name", "Botão " + i));
             o.put("buttons", btns);
             o.put("forwardWatch", bool(c, "forward_watch", false));
+            JSONArray acts = new JSONArray();
+            for (String[] a : Integrations.actions(c)) acts.put(a[0]);
+            o.put("actions", acts);
         } catch (Exception ignored) {
         }
         return o;

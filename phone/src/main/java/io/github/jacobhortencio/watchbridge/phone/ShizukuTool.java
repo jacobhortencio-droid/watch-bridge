@@ -68,6 +68,16 @@ final class ShizukuTool {
         return new String(bos.toByteArray(), StandardCharsets.UTF_8);
     }
 
+    /** Junta o nosso serviço de acessibilidade aos já ativos (sem desligar os outros). */
+    static String enableAccessibility(Context c) {
+        String me = new android.content.ComponentName(c, WaSendService.class).flattenToString();
+        String cur = run("settings get secure enabled_accessibility_services").trim();
+        if (cur.equals("null")) cur = "";
+        if (cur.contains(me)) return "true";
+        String list = cur.isEmpty() ? me : cur + ":" + me;
+        return "settings put secure enabled_accessibility_services '" + list + "' && settings put secure accessibility_enabled 1";
+    }
+
     /** Configura tudo o que normalmente é manual no HyperOS. */
     static String setupAll(Context c) {
         String pkg = c.getPackageName();
@@ -83,11 +93,13 @@ final class ShizukuTool {
                         + " android.permission.READ_CONTACTS; pm grant " + pkg + " android.permission.READ_PHONE_STATE"},
                 {"Agenda", "pm grant " + pkg + " android.permission.READ_CALENDAR"},
                 {"Instalar atualizações", "appops set " + pkg + " REQUEST_INSTALL_PACKAGES allow"},
+                {"Envio de WhatsApp a partir do relógio", enableAccessibility(c)},
         };
         StringBuilder sb = new StringBuilder();
         for (String[] s : steps) {
             String r = run(s[1]);
-            boolean ok = r.isEmpty() || r.contains("Success") || r.startsWith("Added") || r.contains("already");
+            boolean ok = r.isEmpty() || r.contains("Success") || r.startsWith("Added") || r.contains("already")
+                    || r.equals("true");
             sb.append(ok ? "✅ " : "⚠️ ").append(s[0]);
             if (!ok) sb.append(" (").append(r.length() > 80 ? r.substring(0, 80) : r).append(')');
             sb.append('\n');
