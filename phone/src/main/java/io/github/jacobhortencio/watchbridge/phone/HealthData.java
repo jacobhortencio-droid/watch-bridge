@@ -223,23 +223,23 @@ final class HealthData {
         }
         int total = Math.max(1, deep + light);
         SimpleDateFormat f = new SimpleDateFormat("HH:mm", Locale.getDefault());
-        StringBuilder out = new StringBuilder();
+        StringBuilder txt = new StringBuilder();
         long sleptMin = deep + light;
-        out.append("Sono: ").append(f.format(new Date(st))).append(" → ").append(f.format(new Date(en)))
+        txt.append("Sono: ").append(f.format(new Date(st))).append(" → ").append(f.format(new Date(en)))
                 .append(" · dormiu ").append(sleptMin / 60).append("h").append(String.format(Locale.US, "%02d", sleptMin % 60))
                 .append("\nProfundo ").append(deep * 100 / total).append("% · leve ").append(light * 100 / total)
                 .append("% · acordou ").append(awakenings).append(awakenings == 1 ? " vez" : " vezes")
                 .append(" (").append(wake).append(" min)");
-        if (!hrs.isEmpty()) out.append("\nFC média ").append(hrSum / hrs.size()).append(" · mínima ").append(hrs.get(0)).append(" bpm");
+        if (!hrs.isEmpty()) txt.append("\nFC média ").append(hrSum / hrs.size()).append(" · mínima ").append(hrs.get(0)).append(" bpm");
         int spMin = 101, spSum = 0, spN = 0;
         for (long[] r : Prefs.spo2History(c)) if (r[0] >= st && r[0] <= en) {
             spMin = Math.min(spMin, (int) r[1]);
             spSum += r[1];
             spN++;
         }
-        if (spN > 0) out.append("\nSpO2 média ").append(spSum / spN).append("% · mínima ").append(spMin).append('%');
-        out.append("\nEstimativa pelo movimento do pulso; não é uma medição médica.");
-        return out.toString();
+        if (spN > 0) txt.append("\nSpO2 média ").append(spSum / spN).append("% · mínima ").append(spMin).append('%');
+        txt.append("\nEstimativa pelo movimento do pulso; não é uma medição médica.");
+        return txt.toString();
     }
 
     private static long nearestHr(Context c, long t) {
