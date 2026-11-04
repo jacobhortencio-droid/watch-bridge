@@ -141,6 +141,10 @@ final class WSensors implements SensorEventListener {
         }
     }
 
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+    }
+
     // ---------- barómetro: altitude, pisos e tempestade ----------
 
     private void onPressure(float hpa) {
