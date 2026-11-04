@@ -259,7 +259,7 @@ class BlePeripheral {
         byte[] data = Msg.encode(m);
         h.post(() -> {
             if (!isConnected()) return;
-            if (queue.size() > 30000) queue.clear();
+            if (queue.size() > 80000) queue.clear();
             queue.addAll(Chunker.split(data, mtu - 3));
             pump();
         });
