@@ -18,6 +18,7 @@ public class ActionReceiver extends BroadcastReceiver {
     static final String ACTION_STOP_RING = "wb.STOP_RING";
     static final String KEY_TEXT = "wb_text";
     static final String ACTION_CALL = "wb.CALL";
+    static final String ACTION_SPEAK = "wb.SPEAK";
 
     @Override
     public void onReceive(Context c, Intent intent) {
@@ -28,6 +29,9 @@ public class ActionReceiver extends BroadcastReceiver {
         int nid = intent.getIntExtra("nid", 0);
         NotificationManager nm = c.getSystemService(NotificationManager.class);
         switch (a) {
+            case ACTION_SPEAK:
+                WatchTools.speak(c, intent.getStringExtra("text"));
+                break;
             case ACTION_CALL:
                 CallActivity.cmd(intent.getStringExtra("cmd"), "");
                 break;

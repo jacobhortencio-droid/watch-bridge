@@ -436,6 +436,33 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             case Proto.WORKOUT:
                 HealthData.saveWorkout(this, m);
                 break;
+            case Proto.BUTTON:
+                Automation.onWatchButton(this, m.optInt("n", 1));
+                break;
+            case Proto.PHONE_CTL:
+                new Thread(() -> PhoneControl.handle(this, m.optString("cmd")), "wb-ctl").start();
+                break;
+            case Proto.AGENDA_REQ:
+                new Thread(() -> Agenda.send(this), "wb-agenda").start();
+                break;
+            case Proto.APPS:
+                try {
+                    m.put("time", System.currentTimeMillis());
+                } catch (Exception ignored) {
+                }
+                WatchAppsActivity.apps = m;
+                break;
+            case Proto.APK_ACK:
+                if (m.optString("id").equals(WatchAppsActivity.lastAckId)) {
+                    WatchAppsActivity.lastAck = Math.max(WatchAppsActivity.lastAck, m.optInt("seq", -1));
+                }
+                break;
+            case Proto.WNOTIF:
+                showWatchNotif(m);
+                break;
+            case Proto.RESULT:
+                lastResult = m.optString("msg");
+                break;
             case Proto.WATCH_BATTERY:
                 onWatchBattery(m.optInt("level", -1), m.optBoolean("charging"));
                 break;
@@ -467,6 +494,28 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
             default:
                 break;
         }
+    }
+
+    static volatile String lastResult = "";
+
+    /** Notificações do próprio relógio mostradas no telemóvel. */
+    private void showWatchNotif(JSONObject m) {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        nm.createNotificationChannel(new NotificationChannel("watch_notifs", "Notificações do relógio",
+                NotificationManager.IMPORTANCE_DEFAULT));
+        int id = 5000 + (m.optString("key").hashCode() & 0xfff);
+        if (m.optBoolean("removed")) {
+            nm.cancel(id);
+            return;
+        }
+        nm.notify(id, new Notification.Builder(this, "watch_notifs")
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle("⌚ " + m.optString("title"))
+                .setContentText(m.optString("text"))
+                .setSubText(m.optString("app"))
+                .setStyle(new Notification.BigTextStyle().bigText(m.optString("text")))
+                .setAutoCancel(true)
+                .build());
     }
 
     // ---------- configuração e estado ----------

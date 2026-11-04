@@ -218,6 +218,10 @@ final class Prefs {
             o.put("moveOn", bool(c, "move_on", false));
             o.put("waterOn", bool(c, "water_on", false));
             o.put("lostAlertOn", bool(c, "lost_alert_watch", true));
+            JSONArray btns = new JSONArray();
+            for (int i = 1; i <= 3; i++) btns.put(str(c, "btn" + i + "_name", "Botão " + i));
+            o.put("buttons", btns);
+            o.put("forwardWatch", bool(c, "forward_watch", false));
         } catch (Exception ignored) {
         }
         return o;

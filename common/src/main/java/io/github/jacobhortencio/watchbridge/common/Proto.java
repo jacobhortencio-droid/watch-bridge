@@ -51,6 +51,12 @@ public final class Proto {
     public static final String CALL = "call";        // estado da chamada: ringing / offhook / idle
     public static final String CALLS = "calls";      // recentes + favoritos
     public static final String NAV = "nav";          // indicações de navegação
+    public static final String AGENDA = "agenda";
+    public static final String APPS_REQ = "apps_req";
+    public static final String APP_OPEN = "app_open";
+    public static final String APP_UNINSTALL = "app_uninstall";
+    public static final String APK_BEGIN = "apk_begin";
+    public static final String APK_CHUNK = "apk_chunk";
 
     // ---------- relógio -> telemóvel ----------
     public static final String DISMISS = "dismiss";
@@ -61,6 +67,13 @@ public final class Proto {
     public static final String FIND_PHONE = "find_phone";
     public static final String HEALTH = "health";
     public static final String WORKOUT = "workout";  // resumo + GPX de um treino
+    public static final String BUTTON = "button";    // atalho do relógio -> automações do telemóvel
+    public static final String PHONE_CTL = "phone_ctl";  // lanterna, toque, Wi-Fi, modo avião, bloquear, captura
+    public static final String AGENDA_REQ = "agenda_req";
+    public static final String APPS = "apps";        // apps instaladas no relógio
+    public static final String APK_ACK = "apk_ack";
+    public static final String WNOTIF = "wnotif";    // notificação do próprio relógio
+    public static final String RESULT = "result";    // mensagem curta de resultado (ambos os sentidos)
     public static final String SENSORS = "sensors";
     public static final String WATCH_BATTERY = "w_battery";
     public static final String SET_DND = "set_dnd";

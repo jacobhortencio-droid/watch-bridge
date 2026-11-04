@@ -214,6 +214,14 @@ class Notifier {
                 }
             }
         }
+        if (!loud && !text.isEmpty()) {
+            Intent sp = new Intent(ctx, ActionReceiver.class).setAction(ActionReceiver.ACTION_SPEAK)
+                    .setData(Uri.parse("wb://speak/" + id))
+                    .putExtra("text", (title.isEmpty() ? app : title) + ". " + text);
+            b.addAction(new Notification.Action.Builder(Icon.createWithResource(ctx, R.drawable.ic_bell), "🔊 Ler",
+                    PendingIntent.getBroadcast(ctx, id ^ 0x5eed, sp, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT))
+                    .build());
+        }
         nm.notify(id, b.build());
 
         // vibração própria só quando a mensagem é nova ou mudou

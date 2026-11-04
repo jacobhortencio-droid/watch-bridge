@@ -47,6 +47,7 @@ public class MainActivity extends Activity {
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.CALL_PHONE,
             Manifest.permission.SEND_SMS,
+            Manifest.permission.READ_CALENDAR,
     };
 
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -128,6 +129,24 @@ public class MainActivity extends Activity {
         button(col, "Definições (respostas, silêncio, alertas, tempo)", v ->
                 startActivity(new Intent(this, SettingsActivity.class)));
         button(col, "Escolher apps e vibração por app", v -> startActivity(new Intent(this, AppsActivity.class)));
+        button(col, "⚡ Configurar tudo com o Shizuku", v -> {
+            if (!ShizukuTool.running()) {
+                toast("Abra o Shizuku e inicie-o primeiro");
+                return;
+            }
+            if (!ShizukuTool.granted()) {
+                ShizukuTool.request();
+                toast("Autorize o Watch Bridge no Shizuku e toque de novo");
+                return;
+            }
+            toast("A configurar...");
+            new Thread(() -> {
+                String r = ShizukuTool.setupAll(this);
+                h.post(() -> new AlertDialog.Builder(this).setTitle("Shizuku").setMessage(r)
+                        .setPositiveButton("OK", null).show());
+            }, "wb-shizuku").start();
+        });
+        button(col, "⌚ Apps do relógio (instalar e gerir)", v -> startActivity(new Intent(this, WatchAppsActivity.class)));
 
         section(col, "3. Ligação por Wi-Fi (alternativa)");
         TextView ipHelp = new TextView(this);

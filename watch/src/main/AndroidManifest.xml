@@ -23,6 +23,17 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -51,6 +62,30 @@
         <activity android:name=".BreatheActivity" android:exported="true" />
         <activity android:name=".NavActivity" android:exported="false" />
         <activity android:name=".WorkoutActivity" android:exported="false" />
+        <activity android:name=".AgendaActivity" android:exported="false" />
+        <activity android:name=".PhoneCtlActivity" android:exported="true" />
+
+        <service
+            android:name=".WatchNotifListener"
+            android:exported="true"
+            android:label="Watch Bridge"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name=".ShortcutsTileService"
+            android:exported="true"
+            android:label="Atalhos (Watch Bridge)"
+            android:icon="@drawable/ic_stat"
+            android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER">
+            <intent-filter>
+                <action android:name="androidx.wear.tiles.action.BIND_TILE_PROVIDER" />
+            </intent-filter>
+            <meta-data android:name="androidx.wear.tiles.PREVIEW" android:resource="@drawable/ic_launcher" />
+        </service>
         <service
             android:name=".WorkoutService"
             android:exported="false"

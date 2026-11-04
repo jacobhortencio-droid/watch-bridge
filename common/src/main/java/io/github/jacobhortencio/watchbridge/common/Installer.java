@@ -53,6 +53,21 @@ public final class Installer {
         }
     }
 
+    static void notifyConfirm(Context c, Intent confirm) {
+        android.app.NotificationManager nm = c.getSystemService(android.app.NotificationManager.class);
+        nm.createNotificationChannel(new android.app.NotificationChannel("install", "Instalações",
+                android.app.NotificationManager.IMPORTANCE_HIGH));
+        android.app.PendingIntent pi = android.app.PendingIntent.getActivity(c, 7001, confirm,
+                android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT);
+        nm.notify(7001, new android.app.Notification.Builder(c, "install")
+                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle("Confirmar instalação")
+                .setContentText("Toque para continuar")
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .build());
+    }
+
     /** Declarado no manifesto de cada app. */
     public static class Receiver extends BroadcastReceiver {
         @Override
@@ -62,14 +77,17 @@ public final class Installer {
                 Intent confirm = intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent.class);
                 if (confirm != null) {
                     confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    // em segundo plano o Android bloqueia a janela sem avisar: fica também uma notificação
+                    notifyConfirm(c, confirm);
                     try {
                         c.startActivity(confirm);
-                        setState("Confirme a instalação no ecrã");
+                        setState("Confirme a instalação no ecrã (ou toque na notificação)");
                     } catch (Exception e) {
-                        setState("Não foi possível abrir o instalador");
+                        setState("Toque na notificação para confirmar a instalação");
                     }
                 }
             } else if (st == PackageInstaller.STATUS_SUCCESS) {
+                c.getSystemService(android.app.NotificationManager.class).cancel(7001);
                 setState("Instalado");
             } else {
                 String msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);

@@ -66,6 +66,18 @@ public class SettingsActivity extends Activity {
         toggle("move_on", "Lembrete para me mexer (1 hora parado, das 8h às 20h)", false);
         toggle("water_on", "Lembrete para beber água (a cada 2 horas, das 8h às 20h)", false);
 
+        section("Automações (Tasker, MacroDroid, Home Assistant)");
+        toggle("automation_on", "Aceitar pedidos de automações (intents NOTIFY e FIND_WATCH)", false);
+        text("btn1_name", "Botão 1 do relógio: nome", "Botão 1");
+        text("btn1_url", "Botão 1: webhook (opcional, POST)", "");
+        text("btn2_name", "Botão 2: nome", "Botão 2");
+        text("btn2_url", "Botão 2: webhook (opcional)", "");
+        text("btn3_name", "Botão 3: nome", "Botão 3");
+        text("btn3_url", "Botão 3: webhook (opcional)", "");
+
+        section("Notificações do relógio");
+        toggle("forward_watch", "Mostrar no telemóvel as notificações das apps do relógio", false);
+
         section("Meteorologia");
         text("city", "Nome do local", "Benguela");
         Button loc = new Button(this);

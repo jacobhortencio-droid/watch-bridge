@@ -142,6 +142,9 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         }
         ble = new BlePeripheral(this, this);
         if (!ble.start()) WLog.w(TAG, "BLE: " + ble.lastError);
+        // resultado das instalações (APKs enviados pelo telemóvel) volta ao telemóvel
+        io.github.jacobhortencio.watchbridge.common.Installer.setListener(st ->
+                h.post(() -> send(Msg.of(Proto.RESULT, "msg", "Relógio: " + st))));
         startTcpServer();
         registerSteps();
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED);
@@ -417,6 +420,31 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                 break;
             case Proto.NAV:
                 Ongoing.navigation(this, m, notifier);
+                break;
+            case Proto.AGENDA:
+                try {
+                    m.put("time", System.currentTimeMillis());
+                } catch (Exception ignored) {
+                }
+                AgendaActivity.data = m;
+                break;
+            case Proto.APK_BEGIN:
+                WatchTools.apkBegin(m);
+                break;
+            case Proto.APK_CHUNK:
+                WatchTools.apkChunk(this, m);
+                break;
+            case Proto.APPS_REQ:
+                WatchTools.sendApps(this);
+                break;
+            case Proto.APP_OPEN:
+                WatchTools.openApp(this, m.optString("pkg"));
+                break;
+            case Proto.APP_UNINSTALL:
+                WatchTools.uninstallApp(this, m.optString("pkg"));
+                break;
+            case Proto.RESULT:
+                android.widget.Toast.makeText(this, m.optString("msg"), android.widget.Toast.LENGTH_SHORT).show();
                 break;
             case Proto.BATTERY:
                 phoneBattery = m.optInt("level", -1);

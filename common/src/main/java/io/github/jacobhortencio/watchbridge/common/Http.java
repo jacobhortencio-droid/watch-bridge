@@ -62,6 +62,23 @@ public final class Http {
         }
     }
 
+    /** POST com corpo JSON (webhooks, por exemplo do Home Assistant). Devolve o código HTTP. */
+    public static int post(String u, String json) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+        c.setConnectTimeout(15_000);
+        c.setReadTimeout(20_000);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/json");
+        c.setRequestProperty("User-Agent", "watch-bridge");
+        try {
+            c.getOutputStream().write(json.getBytes(StandardCharsets.UTF_8));
+            return c.getResponseCode();
+        } finally {
+            c.disconnect();
+        }
+    }
+
     public static String getText(String u, Network net) throws IOException {
         return new String(get(u, net), StandardCharsets.UTF_8);
     }
