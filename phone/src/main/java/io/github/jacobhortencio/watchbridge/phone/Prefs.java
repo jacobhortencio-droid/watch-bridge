@@ -105,6 +105,55 @@ final class Prefs {
         return out;
     }
 
+    /** Sensores extra do relógio: SpO2, movimento por minuto, pressão, pisos, no pulso. */
+    static synchronized void saveExtras(Context c, org.json.JSONObject m) {
+        SharedPreferences.Editor e = p(c).edit();
+        long t = m.optLong("time", System.currentTimeMillis());
+        int spo2 = m.optInt("spo2", -1);
+        if (spo2 > 0) e.putString("spo2_hist", appendCapped(p(c).getString("spo2_hist", ""), t + ":" + spo2, 1000));
+        org.json.JSONArray act = m.optJSONArray("act");
+        if (act != null && act.length() > 0) {
+            StringBuilder sb = new StringBuilder(p(c).getString("act_hist", ""));
+            for (int i = 0; i < act.length(); i++) {
+                org.json.JSONArray a = act.optJSONArray(i);
+                if (a == null) continue;
+                if (sb.length() > 0) sb.append(';');
+                sb.append(a.optLong(0) * 60_000L).append(':').append(a.optLong(1));
+            }
+            e.putString("act_hist", capList(sb.toString(), 3000));
+        }
+        double pres = m.optDouble("pres", -1);
+        if (pres > 0) e.putString("pres_hist", appendCapped(p(c).getString("pres_hist", ""), t + ":" + Math.round(pres * 10), 600));
+        if (m.has("floors")) e.putInt("floors", m.optInt("floors"));
+        if (m.has("alt")) e.putInt("alt", m.optInt("alt"));
+        if (m.has("worn")) e.putBoolean("worn", m.optBoolean("worn", true));
+        if (m.has("temp")) e.putInt("w_temp", m.optInt("temp"));
+        e.apply();
+    }
+
+    private static String capList(String s, int max) {
+        String[] parts = s.split(";");
+        if (parts.length <= max) return s;
+        StringBuilder sb = new StringBuilder();
+        for (int i = parts.length - max; i < parts.length; i++) {
+            if (sb.length() > 0) sb.append(';');
+            sb.append(parts[i]);
+        }
+        return sb.toString();
+    }
+
+    static List<long[]> spo2History(Context c) {
+        return history(c, "spo2_hist");
+    }
+
+    static List<long[]> activityHistory(Context c) {
+        return history(c, "act_hist");
+    }
+
+    static List<long[]> pressureHistory(Context c) {
+        return history(c, "pres_hist");
+    }
+
     static List<long[]> hrHistory(Context c) {
         return history(c, "hr_hist");
     }

@@ -19,11 +19,11 @@ final class Workouts {
     private Workouts() {}
 
     static synchronized void saveSummary(Context c, long start, String type, long ms, double meters,
-                                         int avgHr, int maxHr, int points) {
+                                         int avgHr, int maxHr, int points, double gain) {
         try {
             JSONArray a = list(c);
             a.put(Msg.of("w", "start", start, "type", type, "ms", ms, "m", Math.round(meters),
-                    "avgHr", avgHr, "maxHr", maxHr, "points", points, "sent", false));
+                    "avgHr", avgHr, "maxHr", maxHr, "points", points, "gain", Math.round(gain), "sent", false));
             WPrefs.p(c).edit().putString("workouts", a.toString()).apply();
         } catch (Exception e) {
             WLog.w("WB-Workout", "resumo falhou", e);

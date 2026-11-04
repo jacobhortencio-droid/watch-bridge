@@ -44,7 +44,8 @@ public class WorkoutService extends Service implements LocationListener, SensorE
     static volatile boolean running, paused;
     static volatile String type = "Corrida";
     static volatile long startWall, activeMs, segStart;
-    static volatile double distance;
+    static volatile double distance, elevGain;
+    private float lastBaroAlt = Float.NaN;
     static volatile int hr, hrMax, gpsAccuracy = -1;
     private static long hrSum, hrCount;
 
@@ -84,6 +85,8 @@ public class WorkoutService extends Service implements LocationListener, SensorE
         segStart = startWall;
         activeMs = 0;
         distance = 0;
+        elevGain = 0;
+        lastBaroAlt = Float.NaN;
         hr = 0;
         hrMax = 0;
         hrSum = 0;
@@ -163,7 +166,7 @@ public class WorkoutService extends Service implements LocationListener, SensorE
             try (FileOutputStream o = new FileOutputStream(new File(dir, startWall + ".gpx"))) {
                 o.write(gpx.toString().getBytes(StandardCharsets.UTF_8));
             }
-            Workouts.saveSummary(this, startWall, type, activeMs, distance, avg, hrMax, points);
+            Workouts.saveSummary(this, startWall, type, activeMs, distance, avg, hrMax, points, elevGain);
         } catch (Exception e) {
             WLog.w("WB-Workout", "gravar falhou", e);
         }
@@ -185,8 +188,18 @@ public class WorkoutService extends Service implements LocationListener, SensorE
         }
         last = l;
         points++;
+        // desnível pelo barómetro (mais preciso que o GPS); ignora variações < 1 m
+        float ba = WSensors.altitude;
+        if (!Float.isNaN(ba)) {
+            if (Float.isNaN(lastBaroAlt)) lastBaroAlt = ba;
+            else if (ba - lastBaroAlt >= 1f) {
+                elevGain += ba - lastBaroAlt;
+                lastBaroAlt = ba;
+            } else if (ba < lastBaroAlt) lastBaroAlt = ba;
+        }
         gpx.append(String.format(Locale.US, "<trkpt lat=\"%.6f\" lon=\"%.6f\">", l.getLatitude(), l.getLongitude()));
-        if (l.hasAltitude()) gpx.append(String.format(Locale.US, "<ele>%.1f</ele>", l.getAltitude()));
+        if (!Float.isNaN(WSensors.altitude)) gpx.append(String.format(Locale.US, "<ele>%.1f</ele>", WSensors.altitude));
+        else if (l.hasAltitude()) gpx.append(String.format(Locale.US, "<ele>%.1f</ele>", l.getAltitude()));
         gpx.append("<time>").append(iso(l.getTime())).append("</time>");
         if (hr > 0) {
             gpx.append("<extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>").append(hr)
@@ -221,7 +234,8 @@ public class WorkoutService extends Service implements LocationListener, SensorE
 
     static String summaryLine() {
         long s = elapsed() / 1000;
-        return String.format(Locale.US, "%d:%02d:%02d · %.2f km", s / 3600, (s / 60) % 60, s % 60, distance / 1000);
+        return String.format(Locale.US, "%d:%02d:%02d · %.2f km · ↑%d m", s / 3600, (s / 60) % 60, s % 60,
+                distance / 1000, Math.round(elevGain));
     }
 
     private Notification notif() {

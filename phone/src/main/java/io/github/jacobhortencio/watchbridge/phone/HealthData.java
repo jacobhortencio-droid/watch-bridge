@@ -102,6 +102,129 @@ final class HealthData {
      * quase não mudaram (amostras de 15 em 15 minutos). Não é uma medição clínica.
      */
     static String sleepSummary(Context c) {
+        String act = actigraphySleep(c);
+        if (act != null) return act;
+        return stepsSleep(c);
+    }
+
+    private static long[] nightWindow() {
+        Calendar from = Calendar.getInstance();
+        from.add(Calendar.DAY_OF_YEAR, -1);
+        from.set(Calendar.HOUR_OF_DAY, 20);
+        from.set(Calendar.MINUTE, 0);
+        Calendar to = Calendar.getInstance();
+        to.set(Calendar.HOUR_OF_DAY, 12);
+        to.set(Calendar.MINUTE, 0);
+        return new long[]{from.getTimeInMillis(), Math.min(to.getTimeInMillis(), System.currentTimeMillis())};
+    }
+
+    /**
+     * Sono pelo movimento do pulso (actigrafia), minuto a minuto, com o acelerómetro do relógio.
+     * Limiar adaptativo à noite da pessoa; sono profundo = quase sem movimento e FC baixa.
+     */
+    static String actigraphySleep(Context c) {
+        long[] w = nightWindow();
+        List<long[]> act = new ArrayList<>();
+        for (long[] r : Prefs.activityHistory(c)) if (r[0] >= w[0] && r[0] <= w[1]) act.add(r);
+        int n = act.size();
+        if (n < 120) return null;
+        double[] v = new double[n], sm = new double[n];
+        for (int i = 0; i < n; i++) v[i] = act.get(i)[1];
+        for (int i = 0; i < n; i++) {
+            double sum = 0;
+            int k = 0;
+            for (int j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) {
+                sum += v[j];
+                k++;
+            }
+            sm[i] = sum / k;
+        }
+        double[] sorted = v.clone();
+        java.util.Arrays.sort(sorted);
+        double thr = Math.max(8, Math.min(60, sorted[(int) (n * 0.4)] * 2));
+        boolean[] asleep = new boolean[n];
+        for (int i = 0; i < n; i++) asleep[i] = sm[i] < thr;
+
+        int bestS = -1, bestE = -1, start = -1, lastSleep = -1;
+        for (int i = 0; i <= n; i++) {
+            boolean close = i == n
+                    || (i > 0 && act.get(i)[0] - act.get(i - 1)[0] > 20 * 60_000L)
+                    || (start >= 0 && !asleep[i] && act.get(i)[0] - act.get(lastSleep)[0] > 15 * 60_000L);
+            if (close && start >= 0) {
+                if (bestS < 0 || act.get(lastSleep)[0] - act.get(start)[0] > act.get(bestE)[0] - act.get(bestS)[0]) {
+                    bestS = start;
+                    bestE = lastSleep;
+                }
+                start = -1;
+            }
+            if (i < n && asleep[i]) {
+                if (start < 0) start = i;
+                lastSleep = i;
+            }
+        }
+        if (bestS < 0) return "Não foi detetado um período de sono (sono por movimento).";
+        long st = act.get(bestS)[0], en = act.get(bestE)[0];
+        long mins = (en - st) / 60_000L;
+        if (mins < 120) return "Não foi detetado um período de sono com mais de 2 horas.";
+
+        // FC da noite para separar sono profundo
+        List<Long> hrs = new ArrayList<>();
+        long hrSum = 0;
+        for (long[] r : Prefs.hrHistory(c)) if (r[0] >= st && r[0] <= en) {
+            hrs.add(r[1]);
+            hrSum += r[1];
+        }
+        java.util.Collections.sort(hrs);
+        long hrLow = hrs.isEmpty() ? Long.MAX_VALUE : hrs.get(hrs.size() / 3);
+
+        int wake = 0, deep = 0, light = 0, awakenings = 0, run = 0;
+        for (int i = bestS; i <= bestE; i++) {
+            if (!asleep[i]) {
+                wake++;
+                run++;
+                if (run == 3) awakenings++;
+                continue;
+            }
+            run = 0;
+            boolean lowHr = hrs.isEmpty() || nearestHr(c, act.get(i)[0]) <= hrLow;
+            if (sm[i] < thr * 0.3 && lowHr) deep++;
+            else light++;
+        }
+        int total = Math.max(1, deep + light);
+        SimpleDateFormat f = new SimpleDateFormat("HH:mm", Locale.getDefault());
+        StringBuilder out = new StringBuilder();
+        long sleptMin = deep + light;
+        out.append("Sono: ").append(f.format(new Date(st))).append(" → ").append(f.format(new Date(en)))
+                .append(" · dormiu ").append(sleptMin / 60).append("h").append(String.format(Locale.US, "%02d", sleptMin % 60))
+                .append("\nProfundo ").append(deep * 100 / total).append("% · leve ").append(light * 100 / total)
+                .append("% · acordou ").append(awakenings).append(awakenings == 1 ? " vez" : " vezes")
+                .append(" (").append(wake).append(" min)");
+        if (!hrs.isEmpty()) out.append("\nFC média ").append(hrSum / hrs.size()).append(" · mínima ").append(hrs.get(0)).append(" bpm");
+        int spMin = 101, spSum = 0, spN = 0;
+        for (long[] r : Prefs.spo2History(c)) if (r[0] >= st && r[0] <= en) {
+            spMin = Math.min(spMin, (int) r[1]);
+            spSum += r[1];
+            spN++;
+        }
+        if (spN > 0) out.append("\nSpO2 média ").append(spSum / spN).append("% · mínima ").append(spMin).append('%');
+        out.append("\nEstimativa pelo movimento do pulso; não é uma medição médica.");
+        return out.toString();
+    }
+
+    private static long nearestHr(Context c, long t) {
+        long best = Long.MAX_VALUE, bestDt = Long.MAX_VALUE;
+        for (long[] r : Prefs.hrHistory(c)) {
+            long dt = Math.abs(r[0] - t);
+            if (dt < bestDt) {
+                bestDt = dt;
+                best = r[1];
+            }
+        }
+        return bestDt <= 20 * 60_000L ? best : Long.MIN_VALUE; // sem FC perto: não impede o "profundo"
+    }
+
+    /** Estimativa antiga, pelos passos (quando ainda não há dados de movimento). */
+    static String stepsSleep(Context c) {
         Calendar from = Calendar.getInstance();
         from.add(Calendar.DAY_OF_YEAR, -1);
         from.set(Calendar.HOUR_OF_DAY, 20);
@@ -179,6 +302,9 @@ final class HealthData {
         SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
         for (long[] r : Prefs.hrHistory(c)) csv.append(f.format(new Date(r[0]))).append(",fc_bpm,").append(r[1]).append('\n');
         for (long[] r : Prefs.stepsHistory(c)) csv.append(f.format(new Date(r[0]))).append(",passos_dia,").append(r[1]).append('\n');
+        for (long[] r : Prefs.spo2History(c)) csv.append(f.format(new Date(r[0]))).append(",spo2_pct,").append(r[1]).append('\n');
+        for (long[] r : Prefs.pressureHistory(c)) csv.append(f.format(new Date(r[0]))).append(",pressao_hpa,").append(r[1] / 10.0).append('\n');
+        for (long[] r : Prefs.activityHistory(c)) csv.append(f.format(new Date(r[0]))).append(",movimento_mg,").append(r[1]).append('\n');
         if (toDownloads(c, "saude-" + stamp + ".csv", "text/csv", csv.toString().getBytes(StandardCharsets.UTF_8)) != null) n++;
         File[] gpx = dir(c).listFiles((d, name) -> name.endsWith(".gpx"));
         if (gpx != null) {

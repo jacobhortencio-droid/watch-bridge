@@ -62,6 +62,8 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
     private volatile ServerSocket server;
     private volatile boolean destroyed;
     private SecureLink link;
+    private WSensors sensors;
+    private long lastNightSpo2;
     private boolean secureReady;
     private long lastStepsSent;
     private boolean lowWarned;
@@ -147,6 +149,8 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                 h.post(() -> send(Msg.of(Proto.RESULT, "msg", "Relógio: " + st))));
         startTcpServer();
         registerSteps();
+        sensors = new WSensors(this, notifier);
+        sensors.start();
         registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED), Context.RECEIVER_NOT_EXPORTED);
         updateStatus();
         upgradeForeground();
@@ -166,6 +170,7 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         instance = null;
         h.removeCallbacksAndMessages(null);
         if (ble != null) ble.stop();
+        if (sensors != null) sensors.stop();
         TcpLink t = tcp;
         if (t != null) t.close();
         try {
@@ -562,7 +567,8 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
                 reportSample(-1);
             }
             checkReminders(now);
-            startHr();
+            nightSpo2(now);
+            if (WSensors.onWrist) startHr();
             h.postDelayed(this, HR_INTERVAL);
         }
     };
@@ -652,9 +658,44 @@ public class WatchService extends Service implements BlePeripheral.Listener, Tcp
         }
     }
 
+    /** SpO2 de hora a hora durante a noite (0h-6h), só com o relógio no pulso e em repouso. */
+    private void nightSpo2(long now) {
+        int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        if (hour >= 6 || !WSensors.onWrist || !canMeasure() || now - lastNightSpo2 < 55 * 60_000) return;
+        if (recentSteps(15 * 60_000) > 20) return;
+        lastNightSpo2 = now;
+        WSensors.measureSpo2(this, new WSensors.Spo2Listener() {
+            @Override
+            public void onProgress(String text) {
+            }
+
+            @Override
+            public void onDone(int value) {
+                if (value > 0) reportSpo2(value);
+            }
+        });
+    }
+
+    void reportSpo2(int value) {
+        queueOrSend(Msg.of(Proto.HEALTH, "spo2", value, "steps", -1, "time", System.currentTimeMillis()));
+        refreshSurfaces();
+    }
+
+    private void queueOrSend(JSONObject m) {
+        if (connected()) {
+            send(m);
+        } else {
+            synchronized (pendingHealth) {
+                if (pendingHealth.length() >= 300) pendingHealth.remove(0);
+                pendingHealth.put(m);
+            }
+        }
+    }
+
     /** Envia ao telemóvel, ou guarda para enviar quando voltar a ligação. */
     private void reportSample(int bpm) {
         JSONObject m = Msg.of(Proto.HEALTH, "hr", bpm, "steps", todaySteps, "time", System.currentTimeMillis());
+        if (sensors != null) sensors.fill(m, bpm < 0);
         if (connected()) {
             send(m);
         } else {

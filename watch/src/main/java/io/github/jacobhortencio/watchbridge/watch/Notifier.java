@@ -157,7 +157,8 @@ class Notifier {
         boolean vip = m.optBoolean("vip");
         boolean loud = call || alarm;
         boolean quiet = WPrefs.inQuiet(ctx) || WatchService.phoneDnd;
-        boolean silent = !loud && (m.optBoolean("silent") || (quiet && !vip));
+        // fora do pulso não vibra (as notificações ficam na lista)
+        boolean silent = !loud && (m.optBoolean("silent") || (quiet && !vip) || !WSensors.onWrist);
         String channel = loud ? CH_CALLS : (silent ? CH_SILENT : CH_MSG);
 
         String shownTitle = title.isEmpty() ? app : title;

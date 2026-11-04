@@ -20,7 +20,7 @@ import io.github.jacobhortencio.watchbridge.common.Proto;
 /** Mede a frequência cardíaca enquanto o ecrã está aberto e envia-a ao telemóvel. */
 public class HealthActivity extends Activity implements SensorEventListener {
     private final Handler h = new Handler(Looper.getMainLooper());
-    private TextView hrText, stepsText, hint;
+    private TextView hrText, stepsText, hint, extra;
     private SensorManager sm;
     private long lastSent;
 
@@ -33,6 +33,8 @@ public class HealthActivity extends Activity implements SensorEventListener {
         hrText = Ui.text(this, col, "❤ --", 30, true);
         hint = Ui.text(this, col, "A medir...", 12, false);
         stepsText = Ui.text(this, col, "", 15, false);
+        extra = Ui.text(this, col, "", 11, false);
+        Ui.button(this, col, "🩸  Oxigénio (SpO2)", v -> startActivity(new android.content.Intent(this, Spo2Activity.class)));
         Ui.show(this, col);
         sm = getSystemService(SensorManager.class);
     }
@@ -69,6 +71,14 @@ public class HealthActivity extends Activity implements SensorEventListener {
         public void run() {
             int st = WatchService.todaySteps;
             stepsText.setText(st >= 0 ? "👣 " + st + " passos hoje" : "👣 a contar passos");
+            StringBuilder sb = new StringBuilder();
+            sb.append(WSensors.onWrist ? "⌚ no pulso" : "⌚ fora do pulso");
+            sb.append("   🪜 ").append(WSensors.floorsToday).append(" pisos");
+            if (!Float.isNaN(WSensors.altitude)) sb.append("\n⛰ ").append(Math.round(WSensors.altitude)).append(" m");
+            if (WSensors.pressure > 0) sb.append("   ").append(Math.round(WSensors.pressure)).append(" hPa");
+            if (WSensors.lastSpo2 > 0) sb.append("\n🩸 SpO2 ").append(WSensors.lastSpo2).append("%");
+            if (!Float.isNaN(WSensors.boardTemp)) sb.append("   🌡 ").append(Math.round(WSensors.boardTemp)).append(" °C");
+            extra.setText(sb.toString());
             h.postDelayed(this, 2000);
         }
     };

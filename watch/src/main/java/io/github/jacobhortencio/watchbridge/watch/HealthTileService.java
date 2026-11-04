@@ -27,7 +27,8 @@ public class HealthTileService extends TileService {
                 .addContent(TileUi.text("Saúde", 12, TileUi.GREY, false))
                 .addContent(TileUi.text("❤ " + (hr > 0 ? hr + " bpm" : "--"), 18, TileUi.WHITE, true))
                 .addContent(TileUi.text("👣 " + (steps >= 0 ? steps : 0) + " (" + pct + "%)", 14, TileUi.WHITE, false))
-                .addContent(TileUi.text("💧 " + Wellness.waterToday(this) + " copos", 12, TileUi.GREY, false))
+                .addContent(TileUi.text("💧 " + Wellness.waterToday(this) + "  🪜 " + WSensors.floorsToday
+                        + (WSensors.lastSpo2 > 0 ? "  🩸 " + WSensors.lastSpo2 + "%" : ""), 12, TileUi.GREY, false))
                 .addContent(TileUi.spacer(8))
                 .addContent(TileUi.row()
                         .addContent(TileUi.launch(getPackageName(), HealthActivity.class, "❤", TileUi.RED))

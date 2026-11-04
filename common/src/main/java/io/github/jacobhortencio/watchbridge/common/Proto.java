@@ -91,7 +91,7 @@ public final class Proto {
      * A atualização é segura em claro: o Android só aceita um APK assinado com a mesma chave.
      */
     public static final Set<String> PLAIN = new HashSet<>(Arrays.asList(
-            SESSION, PAIR_START, PAIR_KEY, PAIR_OK, PAIR_CANCEL, PING,
+            SESSION, PAIR_START, PAIR_KEY, PAIR_OK, PAIR_CANCEL, PING, LOG_REQ, LOG,
             UPD_REQ, UPD_APK, UPD_NONE));
 
     public static final String RELEASE_API =

@@ -52,6 +52,14 @@ public class HealthActivity extends Activity {
         col.addView(hr, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(170)));
         text(hrStats(now - 24 * 3600_000L));
 
+        section("Oxigénio no sangue (SpO2) · últimas 24 horas");
+        ChartView sp = new ChartView(this, ChartView.LINE, 0xFF2F7FD8);
+        sp.setUnit("%");
+        sp.setEmpty("Sem medições. No relógio: Saúde → 🩸 Oxigénio (à noite mede sozinho).");
+        sp.setLine(Prefs.spo2History(this), now - 24 * 3600_000L, now);
+        col.addView(sp, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)));
+        text(statsOf(Prefs.spo2History(this), now - 24 * 3600_000L, "%"));
+
         section("Passos · 7 dias");
         ChartView steps = new ChartView(this, ChartView.BARS, 0xFF2E9E6A);
         TreeMap<String, Long> per = HealthData.stepsPerDay(this, 7);
@@ -77,6 +85,20 @@ public class HealthActivity extends Activity {
         section("Sono");
         text(HealthData.sleepSummary(this));
 
+        section("Altitude e pressão · últimas 24 horas");
+        java.util.List<long[]> pres = new java.util.ArrayList<>();
+        for (long[] r : Prefs.pressureHistory(this)) pres.add(new long[]{r[0], r[1] / 10});
+        ChartView pc = new ChartView(this, ChartView.LINE, 0xFF8E6BD6);
+        pc.setEmpty("Sem dados do barómetro ainda.");
+        pc.setLine(pres, now - 24 * 3600_000L, now);
+        col.addView(pc, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150)));
+        android.content.SharedPreferences pp = Prefs.p(this);
+        text("🪜 " + pp.getInt("floors", 0) + " pisos hoje"
+                + (pp.contains("alt") ? " · ⛰ " + pp.getInt("alt", 0) + " m de altitude" : "")
+                + (pres.isEmpty() ? "" : " · " + pres.get(pres.size() - 1)[1] + " hPa")
+                + (pp.contains("w_temp") ? "\n🌡 Temperatura interna do relógio: " + pp.getInt("w_temp", 0) + " °C" : "")
+                + (pp.getBoolean("worn", true) ? "" : "\n⌚ O relógio está fora do pulso"));
+
         section("Treinos");
         List<JSONObject> ws = HealthData.workouts(this);
         if (ws.isEmpty()) text("Ainda sem treinos. Inicie um no relógio: 🏃 Treino.");
@@ -88,7 +110,8 @@ public class HealthActivity extends Activity {
                     (int) ((secs / 60.0) / km), (int) ((((secs / 60.0) / km) % 1) * 60)) : "";
             text(String.format(Locale.US, "%s · %s\n%.2f km · %d:%02d%s%s",
                     f.format(new Date(w.optLong("start"))), w.optString("type"), km, secs / 60, secs % 60, pace,
-                    w.optInt("avgHr") > 0 ? " · ❤ " + w.optInt("avgHr") + "/" + w.optInt("maxHr") : ""));
+                    (w.optInt("avgHr") > 0 ? " · ❤ " + w.optInt("avgHr") + "/" + w.optInt("maxHr") : "")
+                            + (w.optInt("gain") > 0 ? " · ↑" + w.optInt("gain") + " m" : "")));
         }
 
         section("Exportar e cópias de segurança");
@@ -119,6 +142,20 @@ public class HealthActivity extends Activity {
             BridgeService s = BridgeService.get();
             if (ok && s != null) s.pushConfig();
         }
+    }
+
+    private String statsOf(java.util.List<long[]> data, long from, String unit) {
+        int n = 0, min = Integer.MAX_VALUE, max = 0;
+        long sum = 0;
+        for (long[] r : data) {
+            if (r[0] < from) continue;
+            n++;
+            sum += r[1];
+            min = Math.min(min, (int) r[1]);
+            max = Math.max(max, (int) r[1]);
+        }
+        if (n == 0) return "";
+        return n + " medições · média " + (sum / n) + unit + " · mín " + min + unit + " · máx " + max + unit;
     }
 
     private String hrStats(long from) {

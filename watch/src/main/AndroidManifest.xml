@@ -63,6 +63,7 @@
         <activity android:name=".NavActivity" android:exported="false" />
         <activity android:name=".WorkoutActivity" android:exported="false" />
         <activity android:name=".AgendaActivity" android:exported="false" />
+        <activity android:name=".Spo2Activity" android:exported="false" />
         <activity android:name=".PhoneCtlActivity" android:exported="true" />
 
         <service

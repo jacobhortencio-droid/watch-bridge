@@ -188,7 +188,10 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     private final Runnable tick = new Runnable() {
         @Override
         public void run() {
-            if (!(ble != null && ble.isReady()) && tcp == null) tryTcp();
+            // o Wi-Fi só entra se o Bluetooth estiver em baixo há mais de 30 segundos
+            boolean bleOk = ble != null && ble.isReady();
+            if (bleOk) bleLastOk = System.currentTimeMillis();
+            if (!bleOk && tcp == null && System.currentTimeMillis() - bleLastOk > 30_000) tryTcp();
             if (isLinked()) sendRaw(Msg.of(Proto.PING));
             Pairing p = pairing;
             if (p != null && p.expired()) {
@@ -223,15 +226,37 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
     }
 
     private String via = "";
+    private long bleLastOk = System.currentTimeMillis();
+    private boolean peerHeard;
 
     private void onLinkUp(String via) {
+        if ("Wi-Fi".equals(via) && ble != null && ble.isReady()) {
+            WLog.i(TAG, "Wi-Fi ligado em reserva (o Bluetooth continua a ser usado)");
+            return;
+        }
         this.via = via;
         WLog.i(TAG, "ligação física por " + via);
         link.reset();
+        peerHeard = false;
+        wasReady = false;
         sendRaw(link.sessionMsg("phone"));
         status = "A abrir sessão segura...";
         updateNotif();
+        h.removeCallbacks(sessionWatchdog);
+        h.postDelayed(sessionWatchdog, 12_000);
     }
+
+    /** Se o relógio não responder à sessão, a ligação Bluetooth está "presa": refaz-se do zero. */
+    private final Runnable sessionWatchdog = () -> {
+        if (peerHeard || !isLinked()) return;
+        WLog.w(TAG, "o relógio não respondeu à sessão; a refazer a ligação Bluetooth");
+        if (ble != null && ble.isReady()) {
+            ble.reconnectFresh();
+        } else {
+            sendRaw(link.sessionMsg("phone"));
+            h.postDelayed(this.sessionWatchdog, 12_000);
+        }
+    };
 
     /** Sessão segura aberta: sincroniza tudo. */
     private void onSecureReady() {
@@ -368,6 +393,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         NotifListener l = NotifListener.get();
         switch (t) {
             case Proto.SESSION: {
+                peerHeard = true;
                 link.onPeerSession(m);
                 if (!m.optBoolean("ack")) sendRaw(link.sessionMsg("phone", true));
                 if (link.ready()) {
@@ -432,6 +458,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
                 break;
             case Proto.HEALTH:
                 Prefs.saveHealth(this, m.optInt("hr", -1), m.optInt("steps", -1), m.optLong("time", 0));
+                Prefs.saveExtras(this, m);
                 break;
             case Proto.WORKOUT:
                 HealthData.saveWorkout(this, m);

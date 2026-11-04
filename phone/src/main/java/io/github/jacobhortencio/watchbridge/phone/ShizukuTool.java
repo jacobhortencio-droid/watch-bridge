@@ -87,8 +87,9 @@ final class ShizukuTool {
         StringBuilder sb = new StringBuilder();
         for (String[] s : steps) {
             String r = run(s[1]);
-            sb.append(r.isEmpty() || r.contains("Success") ? "✅ " : "⚠️ ").append(s[0]);
-            if (!r.isEmpty() && !r.contains("Success")) sb.append(" (").append(r.length() > 80 ? r.substring(0, 80) : r).append(')');
+            boolean ok = r.isEmpty() || r.contains("Success") || r.startsWith("Added") || r.contains("already");
+            sb.append(ok ? "✅ " : "⚠️ ").append(s[0]);
+            if (!ok) sb.append(" (").append(r.length() > 80 ? r.substring(0, 80) : r).append(')');
             sb.append('\n');
         }
         WLog.i("WB-Shizuku", "configuração:\n" + sb);

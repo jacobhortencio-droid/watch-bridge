@@ -57,6 +57,21 @@ class BleCentral {
     private int writeRetries;
     private int attempt;
 
+    /** Desliga, limpa a cache GATT do Android e volta a procurar o relógio. */
+    void reconnectFresh() {
+        h.post(() -> {
+            BluetoothGatt g = gatt;
+            if (g != null) {
+                try {
+                    java.lang.reflect.Method m = g.getClass().getMethod("refresh");
+                    m.invoke(g);
+                } catch (Exception ignored) {
+                }
+            }
+            cleanupAndRetry();
+        });
+    }
+
     /** Aparelho atualmente ligado (para o modo acessório). */
     BluetoothDevice device() {
         BluetoothGatt g = gatt;
