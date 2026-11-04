@@ -248,7 +248,7 @@ public class BridgeService extends Service implements BleCentral.Listener, TcpLi
         pushConfig();
         sendBattery();
         sendDnd();
-        Weather.refresh(this, false);
+        Weather.sendCachedOrFetch(this);
         NotifListener l = NotifListener.get();
         if (l != null) {
             l.syncAll();

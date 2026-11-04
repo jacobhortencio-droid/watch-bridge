@@ -1,0 +1,18 @@
+name: Manter chave de assinatura
+
+# A cache do GitHub apaga-se ao fim de 7 dias sem uso. Este passo lê-a a cada 4 dias
+# para que a chave que assina as apps não se perca (sem ela, as atualizações não instalam por cima).
+on:
+  schedule:
+    - cron: '17 3 */4 * *'
+  workflow_dispatch:
+
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.wb-signing
+          key: wb-signing-v1
+      - run: test -f ~/.wb-signing/key.jks && echo "Chave presente" || echo "::warning::Chave não encontrada na cache"

@@ -19,11 +19,14 @@ final class Weather {
     static volatile JSONObject last;
     private static volatile long lastFetch;
 
+    /** Envia a previsão guardada (se houver) e atualiza-a se tiver mais de 30 minutos. */
+    static void sendCachedOrFetch(Context ctx) {
+        if (last != null) BridgeService.send(last);
+        refresh(ctx, false);
+    }
+
     static void refresh(Context ctx, boolean force) {
-        if (!force && System.currentTimeMillis() - lastFetch < 30 * 60_000 && last != null) {
-            BridgeService.send(last);
-            return;
-        }
+        if (!force && System.currentTimeMillis() - lastFetch < 30 * 60_000 && last != null) return;
         final Context app = ctx.getApplicationContext();
         new Thread(() -> {
             try {
